@@ -1,0 +1,462 @@
+{
+    "i18n": false,
+    "type": "tabs",
+    "items": {
+        "tabConnection": {
+            "type": "panel",
+            "label": "Verbindung",
+            "items": {
+                "hdrInfo": {
+                    "type": "staticText",
+                    "text": "Der Adapter liest den HESP-Bus mit. Gesendet wird nur, wenn unter „Steuerung“ freigegeben (Raum-Sollwerte, regelmäßige Parameter-Abfrage) oder wenn der Knopf Parameter_lesen ausgelöst wird. Benötigt wird ein RS485-TCP-Gateway (19200 Baud, 8N1) am Proxon-Bus, das die Bytes transparent per TCP weitergibt.",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "host": {
+                    "type": "text",
+                    "label": "Gateway (IP oder Hostname)",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 8,
+                    "md": 6,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "port": {
+                    "type": "number",
+                    "label": "TCP-Port",
+                    "min": 1,
+                    "max": 65535,
+                    "xs": 12,
+                    "sm": 4,
+                    "md": 3,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "watchdogSec": {
+                    "type": "number",
+                    "label": "Neu verbinden, wenn so lange keine gültigen Telegramme (s)",
+                    "min": 30,
+                    "max": 3600,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                }
+            }
+        },
+        "tabModules": {
+            "type": "panel",
+            "label": "Module",
+            "items": {
+                "hdrModules": {
+                    "type": "staticText",
+                    "text": "Busadresse -> Ordnername. Unbekannte Adressen erscheinen als Modul_<Adresse>.",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "modules": {
+                    "type": "table",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 8,
+                    "lg": 6,
+                    "xl": 6,
+                    "items": [
+                        {
+                            "type": "number",
+                            "attr": "address",
+                            "title": "Busadresse",
+                            "width": "30%",
+                            "min": 0,
+                            "max": 1023
+                        },
+                        {
+                            "type": "text",
+                            "attr": "name",
+                            "title": "Name (Ordner)",
+                            "width": "70%"
+                        }
+                    ]
+                }
+            }
+        },
+        "tabMappings": {
+            "type": "panel",
+            "label": "Zuordnungen",
+            "items": {
+                "hdrMappings": {
+                    "type": "staticText",
+                    "text": "Jede Zeile legt einen benannten Datenpunkt <Modul>.<Name> an. Art R = Antwort des Moduls, W = Wert, den der Master an das Modul schreibt. Index zählt Elemente des gewählten Typs. Bit leer = ganzer Wert. Die Standardzeilen stammen aus eigenen Mitschnitten sowie den Projekten markusmauch/proxon-hesp und DNier/proxon-hesp-homeassistant.",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "mappings": {
+                    "type": "table",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12,
+                    "items": [
+                        {
+                            "type": "number",
+                            "attr": "module",
+                            "title": "Modul",
+                            "width": "6%",
+                            "min": 0,
+                            "max": 1023
+                        },
+                        {
+                            "type": "select",
+                            "attr": "kind",
+                            "title": "Art",
+                            "width": "5%",
+                            "options": [
+                                {
+                                    "label": "R",
+                                    "value": "R"
+                                },
+                                {
+                                    "label": "W",
+                                    "value": "W"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "number",
+                            "attr": "register",
+                            "title": "Register (dez.)",
+                            "width": "7%",
+                            "min": 0
+                        },
+                        {
+                            "type": "number",
+                            "attr": "index",
+                            "title": "Index",
+                            "width": "5%",
+                            "min": 0
+                        },
+                        {
+                            "type": "text",
+                            "attr": "name",
+                            "title": "Name",
+                            "width": "20%"
+                        },
+                        {
+                            "type": "select",
+                            "attr": "type",
+                            "title": "Typ",
+                            "width": "9%",
+                            "options": [
+                                {
+                                    "label": "auto",
+                                    "value": "auto"
+                                },
+                                {
+                                    "label": "float32",
+                                    "value": "float32"
+                                },
+                                {
+                                    "label": "int32",
+                                    "value": "int32"
+                                },
+                                {
+                                    "label": "uint32",
+                                    "value": "uint32"
+                                },
+                                {
+                                    "label": "int16",
+                                    "value": "int16"
+                                },
+                                {
+                                    "label": "uint16",
+                                    "value": "uint16"
+                                },
+                                {
+                                    "label": "uint8",
+                                    "value": "uint8"
+                                },
+                                {
+                                    "label": "Text",
+                                    "value": "text"
+                                },
+                                {
+                                    "label": "Datum/Zeit (0x032E)",
+                                    "value": "calendar"
+                                },
+                                {
+                                    "label": "Uhrzeit (0x0330)",
+                                    "value": "clock"
+                                },
+                                {
+                                    "label": "Lüfterstufe (0x0208)",
+                                    "value": "fanlevel"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "number",
+                            "attr": "factor",
+                            "title": "Faktor",
+                            "width": "6%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "unit",
+                            "title": "Einheit",
+                            "width": "6%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "bit",
+                            "title": "Bit",
+                            "width": "4%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "ignore",
+                            "title": "Ignorieren (roh)",
+                            "width": "7%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "min",
+                            "title": "Min",
+                            "width": "5%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "max",
+                            "title": "Max",
+                            "width": "5%"
+                        },
+                        {
+                            "type": "text",
+                            "attr": "states",
+                            "title": "Wertetexte (0:Aus;1:An)",
+                            "width": "10%"
+                        },
+                        {
+                            "type": "checkbox",
+                            "attr": "history",
+                            "title": "History",
+                            "width": "5%"
+                        }
+                    ]
+                }
+            }
+        },
+        "tabAdvanced": {
+            "type": "panel",
+            "label": "Erweitert",
+            "items": {
+                "storeRegisters": {
+                    "type": "checkbox",
+                    "label": "Alle Register zusätzlich unter <Modul>.Register ablegen (automatisch gedeutet + Rohdaten)",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "refreshSec": {
+                    "type": "number",
+                    "label": "Unveränderte Werte spätestens neu schreiben nach (s)",
+                    "min": 10,
+                    "max": 86400,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "historyInstance": {
+                    "type": "instance",
+                    "adapter": "_dataSources",
+                    "label": "History-Instanz für Zuordnungen mit Haken „History“",
+                    "allowDeactivate": true,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "captureMinutes": {
+                    "type": "number",
+                    "label": "Dauer eines Mitschnitts (info.capture) in Minuten",
+                    "min": 1,
+                    "max": 1440,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "eventLimit": {
+                    "type": "number",
+                    "label": "Anzahl gespeicherter Ereignisse (info.events)",
+                    "min": 10,
+                    "max": 1000,
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                }
+            }
+        },
+        "tabControl": {
+            "type": "panel",
+            "label": "Steuerung",
+            "items": {
+                "hdrControl": {
+                    "type": "staticText",
+                    "text": "Standardmäßig liest der Adapter nur mit. Ist Schreiben erlaubt, entsteht je Raummodul ein Datenpunkt <Raum>.Sollwert. Er wird auf die Schrittweite gerundet; die meisten Raummodule übernehmen nur ganze Grad (20,5 °C wurde im Test ignoriert). Ein geschriebener Wert wird einmalig als SET 0x01FB an das Raummodul gesendet – in einer ruhigen Lücke des Master-Zyklus – und erst nach Rückmeldung des Moduls bestätigt (ack). Das entspricht dem Verhalten des zentralen Bedienteils.",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "allowWrite": {
+                    "type": "checkbox",
+                    "label": "Schreiben von Raum-Sollwerten erlauben",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "controlModules": {
+                    "type": "text",
+                    "label": "Busadressen der Raummodule (Komma-getrennt)",
+                    "newLine": true,
+                    "hidden": "!data.allowWrite",
+                    "xs": 12,
+                    "sm": 6,
+                    "md": 4,
+                    "lg": 4,
+                    "xl": 4
+                },
+                "writeMin": {
+                    "type": "number",
+                    "label": "Minimaler Sollwert (°C)",
+                    "min": 5,
+                    "max": 30,
+                    "hidden": "!data.allowWrite",
+                    "xs": 6,
+                    "sm": 3,
+                    "md": 2,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "writeMax": {
+                    "type": "number",
+                    "label": "Maximaler Sollwert (°C)",
+                    "min": 10,
+                    "max": 35,
+                    "hidden": "!data.allowWrite",
+                    "xs": 6,
+                    "sm": 3,
+                    "md": 2,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "writeStep": {
+                    "type": "select",
+                    "label": "Schrittweite",
+                    "options": [
+                        {
+                            "label": "1 °C (übliche Raummodule)",
+                            "value": 1
+                        },
+                        {
+                            "label": "0,5 °C",
+                            "value": 0.5
+                        }
+                    ],
+                    "hidden": "!data.allowWrite",
+                    "xs": 6,
+                    "sm": 3,
+                    "md": 2,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "hdrParams": {
+                    "type": "header",
+                    "text": "Parameter des Lüftungsgeräts",
+                    "size": 5,
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "txtParams": {
+                    "type": "staticText",
+                    "text": "Der Knopf „Parameter_lesen“ (direkt unter der Instanz) fragt nacheinander jedes Modul ab: Name (Meta 0x0001), Verzeichnis (Meta 0x0033/0x0034/0x0038/0x0039) und danach jeden Parameter. Die Werte landen unter <Modul>.Parameter, die Selbstauskunft unter <Modul>.Meta. Es werden ausschließlich Lese-Anfragen gesendet, eine pro Buslücke (etwa alle 12 s); ein vollständiger Durchlauf dauert deshalb über eine Stunde. Parameter_lesen_aktiv, _Fortschritt und _Status zeigen den Stand. Die regelmäßige Abfrage betrifft nur das Lüftungsgerät: die unten angegebenen DPs (leer = alle aus dessen Verzeichnis, setzt einmaliges Lesen voraus).",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 12,
+                    "lg": 12,
+                    "xl": 12
+                },
+                "pollEnabled": {
+                    "type": "checkbox",
+                    "label": "Parameter regelmäßig abfragen",
+                    "newLine": true,
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "pollMinutes": {
+                    "type": "number",
+                    "label": "Intervall (Minuten)",
+                    "min": 5,
+                    "max": 1440,
+                    "hidden": "!data.pollEnabled",
+                    "newLine": true,
+                    "xs": 6,
+                    "sm": 3,
+                    "md": 2,
+                    "lg": 2,
+                    "xl": 2
+                },
+                "pollList": {
+                    "type": "text",
+                    "label": "DPs (z. B. 0x015F, 0x0228; leer = alle)",
+                    "hidden": "!data.pollEnabled",
+                    "xs": 12,
+                    "sm": 9,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                }
+            }
+        }
+    }
+}

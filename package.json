@@ -1,0 +1,51 @@
+{
+    "name": "iobroker.proxon-hesp",
+    "version": "0.4.0",
+    "description": "Passively reads the HESP bus of Proxon ventilation units (P series) via an RS485-to-TCP gateway",
+    "author": {
+        "name": "Martin",
+        "email": "mkspam@kneppe.org"
+    },
+    "license": "MIT",
+    "keywords": [
+        "ioBroker",
+        "proxon",
+        "hesp",
+        "ventilation",
+        "lüftung"
+    ],
+    "main": "build/src/main.js",
+    "files": [
+        "admin/",
+        "build/src/",
+        "io-package.json",
+        "LICENSE",
+        "NOTICE.md",
+        "README.md",
+        "README.de.md"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "@iobroker/adapter-core": "^3.2.2"
+    },
+    "devDependencies": {
+        "@iobroker/types": "^7.0.6",
+        "@types/node": "^22.0.0",
+        "typescript": "~5.8.3"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "test": "npm run build && node --test build/test/*.test.js",
+        "gen": "node tools/gen-io-package.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/mkneppe/ioBroker.proxon-hesp"
+    },
+    "homepage": "https://github.com/mkneppe/ioBroker.proxon-hesp",
+    "bugs": {
+        "url": "https://github.com/mkneppe/ioBroker.proxon-hesp/issues"
+    }
+}
