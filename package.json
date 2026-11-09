@@ -1,6 +1,6 @@
 {
     "name": "iobroker.proxon-hesp",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "description": "Passively reads the HESP bus of Proxon ventilation units (P series) via an RS485-to-TCP gateway",
     "author": {
         "name": "Martin",

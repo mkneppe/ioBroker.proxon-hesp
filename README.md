@@ -77,6 +77,10 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
+### 0.4.1 (2026-11-09)
+
+- Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
+
 ### 0.4.0 (2026-11-09)
 
 - Read parameters of all modules; button and status directly under the instance; meta lists merged

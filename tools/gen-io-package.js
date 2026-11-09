@@ -38,6 +38,7 @@ for (const r of rooms) {
     mappings.push(M(r, 'R', 0x01f6, 'SollTemperaturModul', { type: 'float32', unit: '°C' }));
     mappings.push(M(r, 'R', 0x01fa, 'SollTemperaturZentrale', { type: 'float32', unit: '°C' }));
     // [OB] per Bedienteil-Tests 2026-11-08 ermittelt
+    mappings.push(M(r, 'W', 0x01f8, 'Fuehlerkorrektur', { type: 'float32', unit: '°C', min: -10, max: 10 }));
     mappings.push(M(r, 'W', 0x019a, 'Heizanforderung', { type: 'uint8', states: '0:im Sollbereich;1:Heizbedarf;2:zu warm' }));
     mappings.push(M(r, 'R', 0x0194, 'Heizelement_freigegeben', { type: 'uint16', bit: 3 }));
     mappings.push(M(r, 'R', 0x0194, 'Tastensperre', { type: 'uint16', bit: 11 }));
@@ -76,6 +77,9 @@ for (let s = 0; s < 4; s++) {
     mappings.push(M(C, 'R', 0x00d3, `Luefter.Kennlinie_Abluft_Stufe${s + 1}`, { type: 'float32', index: s, unit: '%', min: 0, max: 100 }));
 }
 mappings.push(M(C, 'R', 0x0208, 'Luefter.Stufe_Ist', { type: 'fanlevel' }));
+// Statuswort 0x0208, 2. Byte: Start 0x10 -> 0x12 -> 0x13, Stopp 0x13 -> 0x11 -> 0x10 (eigene Beobachtung, Deutung vermutet)
+mappings.push(M(C, 'R', 0x0208, 'Betrieb.Waermepumpe_angefordert', { type: 'uint32', bit: 9 }));
+mappings.push(M(C, 'R', 0x0208, 'Betrieb.Waermepumpe_aktiv', { type: 'uint32', bit: 8 }));
 mappings.push(M(C, 'W', 0x00e1, 'Luefter.Stufe_Soll', { type: 'uint16', min: 0, max: 4 }));
 mappings.push(M(C, 'W', 0x01f8, 'Luefter.Intensivlueftung', { type: 'uint32', bit: 6 }));
 // Betrieb [DN][MM]
@@ -118,6 +122,10 @@ const io = {
         name: 'proxon-hesp',
         version: pkg.version,
         news: {
+            '0.4.1': {
+                en: 'Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master)',
+                de: 'Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben)',
+            },
             '0.4.0': {
                 en: 'Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each',
                 de: 'Parameter lesen für alle Module (Name, Verzeichnis, Werte); Knopf und Status (aktiv, Fortschritt) direkt unter der Instanz; Meta-Listen zu je einem Datenpunkt zusammengeführt',
@@ -204,7 +212,7 @@ const io = {
             { address: 13, name: 'Raum_13' },
             { address: 14, name: 'Raum_14' },
             { address: 15, name: 'Raum_15' },
-            { address: 30, name: 'Bedienteil' },
+            { address: 30, name: 'PTC_Modul' },
             { address: 40, name: 'Teilnehmer_40' },
         ],
         mappings,

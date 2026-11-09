@@ -106,6 +106,10 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
+### 0.4.1 (2026-11-09)
+
+- Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
+
 ### 0.4.0 (2026-11-09)
 
 - Parameter lesen für alle Module; Knopf und Status direkt unter der Instanz; Meta-Listen zusammengeführt

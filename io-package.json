@@ -1,8 +1,12 @@
 {
     "common": {
         "name": "proxon-hesp",
-        "version": "0.4.0",
+        "version": "0.4.1",
         "news": {
+            "0.4.1": {
+                "en": "Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master)",
+                "de": "Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben)"
+            },
             "0.4.0": {
                 "en": "Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each",
                 "de": "Parameter lesen für alle Module (Name, Verzeichnis, Werte); Knopf und Status (aktiv, Fortschritt) direkt unter der Instanz; Meta-Listen zu je einem Datenpunkt zusammengeführt"
@@ -137,7 +141,7 @@
             },
             {
                 "address": 30,
-                "name": "Bedienteil"
+                "name": "PTC_Modul"
             },
             {
                 "address": 40,
@@ -196,6 +200,22 @@
             {
                 "module": 10,
                 "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
+                "states": ""
+            },
+            {
+                "module": 10,
+                "kind": "W",
                 "register": 410,
                 "index": 0,
                 "name": "Heizanforderung",
@@ -292,6 +312,22 @@
             {
                 "module": 11,
                 "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
+                "states": ""
+            },
+            {
+                "module": 11,
+                "kind": "W",
                 "register": 410,
                 "index": 0,
                 "name": "Heizanforderung",
@@ -388,6 +424,22 @@
             {
                 "module": 12,
                 "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
+                "states": ""
+            },
+            {
+                "module": 12,
+                "kind": "W",
                 "register": 410,
                 "index": 0,
                 "name": "Heizanforderung",
@@ -479,6 +531,22 @@
                 "ignore": "",
                 "min": "",
                 "max": "",
+                "states": ""
+            },
+            {
+                "module": 13,
+                "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
                 "states": ""
             },
             {
@@ -580,6 +648,22 @@
             {
                 "module": 14,
                 "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
+                "states": ""
+            },
+            {
+                "module": 14,
+                "kind": "W",
                 "register": 410,
                 "index": 0,
                 "name": "Heizanforderung",
@@ -671,6 +755,22 @@
                 "ignore": "",
                 "min": "",
                 "max": "",
+                "states": ""
+            },
+            {
+                "module": 15,
+                "kind": "W",
+                "register": 504,
+                "index": 0,
+                "name": "Fuehlerkorrektur",
+                "unit": "°C",
+                "type": "float32",
+                "factor": 1,
+                "history": false,
+                "bit": "",
+                "ignore": "",
+                "min": -10,
+                "max": 10,
                 "states": ""
             },
             {
@@ -1116,6 +1216,38 @@
                 "factor": 1,
                 "history": false,
                 "bit": "",
+                "ignore": "",
+                "min": "",
+                "max": "",
+                "states": ""
+            },
+            {
+                "module": 2,
+                "kind": "R",
+                "register": 520,
+                "index": 0,
+                "name": "Betrieb.Waermepumpe_angefordert",
+                "unit": "",
+                "type": "uint32",
+                "factor": 1,
+                "history": false,
+                "bit": 9,
+                "ignore": "",
+                "min": "",
+                "max": "",
+                "states": ""
+            },
+            {
+                "module": 2,
+                "kind": "R",
+                "register": 520,
+                "index": 0,
+                "name": "Betrieb.Waermepumpe_aktiv",
+                "unit": "",
+                "type": "uint32",
+                "factor": 1,
+                "history": false,
+                "bit": 8,
                 "ignore": "",
                 "min": "",
                 "max": "",
