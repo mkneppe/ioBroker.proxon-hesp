@@ -90,12 +90,13 @@ interface WriteJob {
     sentAt: number;
 }
 
-/** DP, nach dessen Antwort (von Adresse 2) eine ~140-ms-Buslücke folgt */
+/** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage der BDE) */
 const GAP_TRIGGER_DP = 0x02d9;
 const WRITE_TIMEOUT_MS = 30000;
 const WRITE_MAX_TRIES = 2;
 const QUERY_TIMEOUT_MS = 3000;
-const QUERY_MAX_TRIES = 2;
+/** Lese-Anfragen gehen oft verloren: die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
+const QUERY_MAX_TRIES = 4;
 /** Adresse des Lüftungsgeräts */
 const UNIT_ADDR = 2;
 /** Meta-Listen liefern je Anfrage 64 Einträge ab dem Offset im Sub-Selektor */
@@ -285,6 +286,8 @@ class ProxonHesp extends utils.Adapter {
         const sock = net.createConnection({ host: this.cfg.host, port: this.cfg.port });
         this.sock = sock;
         sock.setTimeout(60000);
+        // Anfragen müssen in der kurzen Buslücke ankommen -> kein Nagle-Puffer
+        sock.setNoDelay(true);
         sock.on('connect', () => {
             this.log.info(`Verbunden mit ${this.cfg.host}:${this.cfg.port}`);
             sock.setKeepAlive(true, 15000);
@@ -355,6 +358,10 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private onFrame(f: Frame): void {
+        // zeitkritisch: in der Buslücke zuerst senden, dann auswerten
+        if (f.type === FrameType.Response) {
+            this.gapTick(f);
+        }
         if (this.capture) {
             this.capture.stream.write(
                 `${new Date().toISOString()} ${f.type} ${f.src}>${f.dst} 0x${f.id.toString(16)} ${f.raw.toString('hex')}\n`,
@@ -368,7 +375,6 @@ class ProxonHesp extends utils.Adapter {
                 });
                 return;
             case FrameType.Response: {
-                this.gapTick(f);
                 const qj = this.queryQueue[0];
                 if (qj && qj.sentAt && f.src === qj.dst && f.dst === 1 && f.id === qj.id) {
                     this.queryQueue.shift();

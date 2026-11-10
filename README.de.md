@@ -10,6 +10,8 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 
 - RS485-TCP-Gateway am HESP-Bus (19200 Baud, 8N1), transparenter TCP-Server-Modus
   (z. B. Port 502). Mehrere TCP-Clients gleichzeitig sind unkritisch, solange nur gelesen wird.
+  Für „Parameter lesen“ und das Schreiben von Sollwerten möglichst nur den Adapter verbinden:
+  Die Sendelücke auf dem Bus ist nur etwa 70–80 ms lang, jede zusätzliche Verbindung verzögert das Gateway.
 - js-controller ≥ 6, Admin ≥ 7.
 
 ## Installation
@@ -109,6 +111,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
+- Parameter lesen: bis zu 4 Versuche je Anfrage, Anfrage wird ohne Verzögerung gesendet (die Buslücke ist nur ~70–80 ms lang)
 
 ### 0.4.0 (2026-11-09)
 

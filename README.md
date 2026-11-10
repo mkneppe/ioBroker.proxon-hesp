@@ -14,6 +14,8 @@ and read the parameters of all bus modules (read queries only).
 
 - RS485-to-TCP gateway on the HESP bus (19200 baud, 8N1) in transparent TCP server mode
   (e.g. port 502). Several TCP clients at the same time are fine as long as they only listen.
+  For *read parameters* and setpoint writing, preferably connect only the adapter:
+  the send gap on the bus is only about 70–80 ms, and every additional connection delays the gateway.
 - js-controller ≥ 6, Admin ≥ 7, Node.js ≥ 20.
 
 ## Installation
@@ -80,6 +82,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
+- Read parameters: up to 4 tries per query, queries are sent without delay (the bus gap is only ~70–80 ms)
 
 ### 0.4.0 (2026-11-09)
 
