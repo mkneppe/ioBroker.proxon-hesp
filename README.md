@@ -82,7 +82,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
-- Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately
+- Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately; after 12 unanswered queries in a row the gateway connection is re-established
 
 ### 0.4.0 (2026-11-09)
 

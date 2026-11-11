@@ -97,6 +97,8 @@ const WRITE_MAX_TRIES = 2;
 const QUERY_TIMEOUT_MS = 3000;
 /** Lese-Anfragen gehen oft verloren (nur ~40 % Treffer): die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
 const QUERY_MAX_TRIES = 8;
+/** so viele unbeantwortete Versuche in Folge deuten auf einen hängenden Sendeweg im Gateway -> Verbindung neu aufbauen */
+const QUERY_FAIL_RECONNECT = 12;
 /** Adresse des Lüftungsgeräts */
 const UNIT_ADDR = 2;
 /** Meta-Listen liefern je Anfrage 64 Einträge ab dem Offset im Sub-Selektor */
@@ -149,6 +151,8 @@ class ProxonHesp extends utils.Adapter {
     private writeQueue: WriteJob[] = [];
     private reportedSetpoint = new Map<number, number>();
     private queryQueue: QueryJob[] = [];
+    /** unbeantwortete Anfrage-Versuche in Folge */
+    private queryFailStreak = 0;
     private paramDirs = new Map<number, ParamDirectory>();
     private paramRunning = false;
 
@@ -378,6 +382,7 @@ class ProxonHesp extends utils.Adapter {
                 const qj = this.queryQueue[0];
                 if (qj && qj.sentAt && f.src === qj.dst && f.dst === 1 && f.id === qj.id) {
                     this.queryQueue.shift();
+                    this.queryFailStreak = 0;
                     qj.resolve(f.payload);
                 }
                 if (f.dp === 0x01f6 && f.payload.length === 4 && this.controlMods.has(f.src)) {
@@ -402,6 +407,7 @@ class ProxonHesp extends utils.Adapter {
                 const qj = this.queryQueue[0];
                 if (qj && qj.sentAt && f.src === qj.dst && f.dst === 1 && f.id === qj.id) {
                     this.queryQueue.shift();
+                    this.queryFailStreak = 0;
                     qj.resolve(null);
                 }
                 return;
@@ -756,12 +762,19 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
         if (q.sentAt && Date.now() - q.sentAt > QUERY_TIMEOUT_MS) {
+            q.sentAt = 0;
+            if (++this.queryFailStreak >= QUERY_FAIL_RECONNECT) {
+                // beobachtet: Gateway nahm Anfragen an, sendete sie aber nicht auf den Bus, bis die Verbindung neu aufgebaut war
+                this.queryFailStreak = 0;
+                this.log.info(`${QUERY_FAIL_RECONNECT} Anfragen in Folge unbeantwortet – baue Verbindung zum Gateway neu auf`);
+                this.lost('keine Antworten auf Anfragen');
+                return;
+            }
             if (q.tries >= q.maxTries) {
                 this.queryQueue.shift();
                 q.resolve(null);
                 return;
             }
-            q.sentAt = 0;
         }
         if (!sent && !q.sentAt && f.src === UNIT_ADDR && f.dp === GAP_TRIGGER_DP && this.sock) {
             this.sock.write(buildQuery(1, q.dst, q.id, q.count));
