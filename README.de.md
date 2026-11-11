@@ -76,6 +76,14 @@ Wertetexte und History. Die Standardzeilen decken Temperaturfühler T1–T13,
 Lüfterdrehzahlen/-ansteuerung/-kennlinien, Betriebsart, Bypass, Filter,
 Betriebsstunden, Verdichterdrehzahl, Gerätezeit und Raummodule ab.
 
+## Lernprotokoll
+
+Die Option *Lernprotokoll* (Reiter *Erweitert*, standardmäßig aus) schreibt Tagesdateien nach `iobroker-data/proxon-hesp.N/lernen/`:
+- `aenderungen_JJJJ-MM-TT.log`: jede Wertänderung eines Registers, je Zeile `ms-Zeitstempel R|W<Modul>:<DP hex>:<Sub> <Nutzdaten hex>`. Jede Datei beginnt mit dem vollständigen Stand.
+- `unbekannt_JJJJ-MM-TT.log`: Bytes, die nicht als Telegramm erkannt wurden (CRC-Fehler, Störungen), sowie Telegramme unbekannten Typs.
+
+Dateien, die älter als die eingestellte Anzahl Tage sind (Standard 90, 0 = unbegrenzt), werden gelöscht. Eine Tagesdatei hat typischerweise einige MB.
+
 ## Parameter lesen
 
 Der Knopf `Parameter_lesen` direkt unter der Instanz fragt nacheinander jedes konfigurierte Modul ab, zuerst das Lüftungsgerät:
@@ -111,6 +119,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
+- Optionales Lernprotokoll: jede Wertänderung und alle nicht erkannten Bytes in Tagesdateien
 - Parameter lesen: bis zu 8 Versuche je Anfrage (die Buslücke ist nur ~70–80 ms lang, nur gut 40 % der Anfragen kommen durch), Ablehnungen (Typ 4) werden sofort erkannt; nach 12 unbeantworteten Anfragen in Folge wird die Verbindung zum Gateway neu aufgebaut
 
 ### 0.4.0 (2026-11-09)

@@ -62,6 +62,10 @@ interface Config {
     pollMinutes: number;
     /** DPs (hex/dez., Komma-getrennt); leer = alle aus dem Verzeichnis */
     pollList: string;
+    /** Lernprotokoll: jede Wertänderung und alle nicht erkannten Bytes in Tagesdateien */
+    learnLog: boolean;
+    /** Aufbewahrung der Lernprotokolle in Tagen (0 = unbegrenzt) */
+    learnLogDays: number;
 }
 
 /** Ausstehende Lese-Anfrage (Typ 0, Quelle 1) */
@@ -153,6 +157,10 @@ class ProxonHesp extends utils.Adapter {
     private queryQueue: QueryJob[] = [];
     /** unbeantwortete Anfrage-Versuche in Folge */
     private queryFailStreak = 0;
+    /** Lernprotokoll: letzter Inhalt je Register und offene Tagesdateien */
+    private learnLast = new Map<string, string>();
+    private learnFiles = new Map<string, { day: string; stream: fs.WriteStream }>();
+    private learnCleanupTimer: ioBroker.Interval | undefined;
     private paramDirs = new Map<number, ParamDirectory>();
     private paramRunning = false;
 
@@ -172,6 +180,13 @@ class ProxonHesp extends utils.Adapter {
         this.cfg.refreshSec = Number(this.cfg.refreshSec) || 300;
         this.cfg.captureMinutes = Number(this.cfg.captureMinutes) || 15;
         this.cfg.eventLimit = Number(this.cfg.eventLimit) || 100;
+        this.cfg.learnLogDays = Math.max(0, Number(this.cfg.learnLogDays ?? 90) || 0);
+        if (this.cfg.learnLog) {
+            this.parser.onJunk = junk => this.learnWrite('unbekannt', `${Date.now()} ${junk.toString('hex')}`);
+            this.learnCleanup();
+            this.learnCleanupTimer = this.setInterval(() => this.learnCleanup(), 6 * 3600e3);
+            this.log.info(`Lernprotokoll aktiv: ${path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen')}`);
+        }
 
         await this.setState('info.connection', false, true);
         if (!this.cfg.host) {
@@ -275,6 +290,13 @@ class ProxonHesp extends utils.Adapter {
                 this.clearTimeout(this.reconnectTimer);
             }
             this.stopCapture(false);
+            if (this.learnCleanupTimer) {
+                this.clearInterval(this.learnCleanupTimer);
+            }
+            for (const f of this.learnFiles.values()) {
+                f.stream.end();
+            }
+            this.learnFiles.clear();
             this.shutdownSocket();
             void this.setState('info.connection', false, true);
         } finally {
@@ -365,6 +387,9 @@ class ProxonHesp extends utils.Adapter {
         // zeitkritisch: in der Buslücke zuerst senden, dann auswerten
         if (f.type === FrameType.Response) {
             this.gapTick(f);
+        }
+        if (this.cfg.learnLog) {
+            this.learnFrame(f);
         }
         if (this.capture) {
             this.capture.stream.write(
@@ -1135,6 +1160,65 @@ class ProxonHesp extends utils.Adapter {
             },
         });
         await this.write(id, val, true);
+    }
+
+    /* ------------------------------------------------------- Lernprotokoll */
+    /** SET/Antwort: nur Änderungen protokollieren; unbekannte Telegrammtypen immer */
+    private learnFrame(f: Frame): void {
+        if (f.type === FrameType.Set || f.type === FrameType.Response) {
+            const mod = f.type === FrameType.Response ? f.src : f.dst;
+            const key = `${f.type === FrameType.Response ? 'R' : 'W'}${mod}:${f.dp.toString(16)}:${f.sub}`;
+            const hex = f.payload.toString('hex');
+            if (this.learnLast.get(key) !== hex) {
+                this.learnLast.set(key, hex);
+                this.learnWrite('aenderungen', `${Date.now()} ${key} ${hex}`);
+            }
+        } else if (f.type > FrameType.Reject) {
+            this.learnWrite('unbekannt', `${Date.now()} typ${f.type} ${f.raw.toString('hex')}`);
+        }
+    }
+
+    private learnWrite(kind: string, line: string): void {
+        const day = new Date().toLocaleDateString('sv-SE');
+        let f = this.learnFiles.get(kind);
+        if (!f || f.day !== day) {
+            f?.stream.end();
+            try {
+                const dir = path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen');
+                fs.mkdirSync(dir, { recursive: true });
+                const stream = fs.createWriteStream(path.join(dir, `${kind}_${day}.log`), { flags: 'a' });
+                stream.on('error', e => this.log.warn(`Lernprotokoll: ${e.message}`));
+                f = { day, stream };
+                this.learnFiles.set(kind, f);
+                if (kind === 'aenderungen') {
+                    // jede Tagesdatei beginnt mit dem vollständigen Stand
+                    this.learnLast.clear();
+                }
+            } catch (e) {
+                this.log.warn(`Lernprotokoll nicht möglich: ${(e as Error).message}`);
+                return;
+            }
+        }
+        f.stream.write(`${line}\n`);
+    }
+
+    /** Lernprotokolle älter als learnLogDays löschen */
+    private learnCleanup(): void {
+        if (!this.cfg.learnLogDays) {
+            return;
+        }
+        const dir = path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen');
+        const limit = new Date(Date.now() - this.cfg.learnLogDays * 86400e3).toLocaleDateString('sv-SE');
+        try {
+            for (const name of fs.readdirSync(dir)) {
+                const m = /_(\d{4}-\d{2}-\d{2})\.log$/.exec(name);
+                if (m && m[1] < limit) {
+                    fs.unlinkSync(path.join(dir, name));
+                }
+            }
+        } catch {
+            // Ordner existiert noch nicht
+        }
     }
 
     private startCapture(): void {

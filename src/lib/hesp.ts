@@ -102,6 +102,17 @@ export class FrameParser {
     private buf: Buffer = Buffer.alloc(0);
     public validFrames = 0;
     public skippedBytes = 0;
+    /** erhält übersprungene (nicht als Telegramm erkannte) Bytes zusammenhängend */
+    public onJunk?: (junk: Buffer) => void;
+    private junk: number[] = [];
+
+    private flushJunk(): void {
+        if (this.junk.length) {
+            const j = Buffer.from(this.junk);
+            this.junk = [];
+            this.onJunk?.(j);
+        }
+    }
 
     constructor(private readonly maxBuffer = 4096) {}
 
@@ -138,16 +149,24 @@ export class FrameParser {
                 break;
             }
             if (len) {
+                this.flushJunk();
                 out.push(decodeFrame(Buffer.from(this.buf.subarray(o, o + len))));
                 o += len;
                 this.validFrames++;
             } else {
+                if (this.onJunk) {
+                    this.junk.push(this.buf[o]);
+                }
                 o++;
                 this.skippedBytes++;
             }
         }
         this.buf = this.buf.subarray(o);
         if (this.buf.length > this.maxBuffer) {
+            if (this.onJunk) {
+                this.junk.push(...this.buf);
+            }
+            this.flushJunk();
             this.skippedBytes += this.buf.length;
             this.buf = Buffer.alloc(0);
         }

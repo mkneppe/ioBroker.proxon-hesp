@@ -38,6 +38,17 @@ test('Parser: synchronisiert sich nach Datenmüll neu', () => {
     assert.ok(p.skippedBytes > 0);
 });
 
+test('Parser: meldet übersprungene Bytes zusammenhängend (onJunk)', () => {
+    const p = new FrameParser();
+    const junk: string[] = [];
+    p.onJunk = j => junk.push(j.toString('hex'));
+    const good = Buffer.concat(fixture.slice(0, 20));
+    p.push(Buffer.concat([Buffer.from('deadbeef0011', 'hex'), good]));
+    assert.equal(junk.length, 1);
+    assert.equal(junk[0].length / 2, p.skippedBytes);
+    assert.ok(junk[0].startsWith('deadbeef0011'));
+});
+
 test('Parser: langes Telegramm mit Längenfeld 00 (128 Byte Nutzdaten)', () => {
     const payload = Buffer.alloc(128);
     for (let i = 0; i < 64; i++) {

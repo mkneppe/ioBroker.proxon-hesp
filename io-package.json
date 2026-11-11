@@ -110,6 +110,8 @@
         "pollEnabled": false,
         "pollMinutes": 60,
         "pollList": "",
+        "learnLog": false,
+        "learnLogDays": 90,
         "modules": [
             {
                 "address": 2,

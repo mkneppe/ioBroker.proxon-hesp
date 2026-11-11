@@ -204,6 +204,8 @@ const io = {
         pollEnabled: false,
         pollMinutes: 60,
         pollList: '',
+        learnLog: false,
+        learnLogDays: 90,
         modules: [
             { address: 2, name: 'Zentrale' },
             { address: 10, name: 'Raum_10' },

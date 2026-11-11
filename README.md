@@ -52,6 +52,14 @@ and read the parameters of all bus modules (read queries only).
 
 `R` = reply of a module to a read query, `W` = value the master writes to the module. Register numbers in state IDs are decimal.
 
+## Learning log
+
+Option *Learning log* (tab *Erweitert* / advanced, off by default) writes daily files to `iobroker-data/proxon-hesp.N/lernen/`:
+- `aenderungen_YYYY-MM-DD.log`: every value change of a register, one line `ms-timestamp R|W<module>:<dp hex>:<sub> <payload hex>`. Each file starts with the complete state.
+- `unbekannt_YYYY-MM-DD.log`: bytes that could not be recognised as a telegram (CRC errors, garbage) and telegrams of unknown type.
+
+Files older than the configured number of days (default 90, 0 = keep) are deleted. A day file is typically a few MB.
+
 ## Read parameters
 
 The button `Parameter_lesen` queries every configured module, the ventilation unit first:
@@ -82,6 +90,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
+- Optional learning log: every value change and all unrecognised bytes in daily files
 - Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately; after 12 unanswered queries in a row the gateway connection is re-established
 
 ### 0.4.0 (2026-11-09)
