@@ -69,7 +69,7 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 ```
 
 - Header: 24 bit LE.
-  - Bits 0–3 type: 0 query, 1 set, 2 reply, 3 ack.
+  - Bits 0–3 type: 0 query, 1 set, 2 reply, 3 ack, 4 reject (e.g. meta page beyond the list).
   - Bits 4–13 source, bits 14–23 destination.
 - ID: data point in the low 16 bits; the high 16 bits are the sub selector (element offset for meta lists).
 - CRC: init `0xFFFF`, reflected polynomial `0x8048`, 16 shift steps per byte.
@@ -82,7 +82,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
-- Read parameters: up to 4 tries per query, queries are sent without delay (the bus gap is only ~70–80 ms)
+- Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately
 
 ### 0.4.0 (2026-11-09)
 

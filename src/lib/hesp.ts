@@ -14,6 +14,8 @@ export enum FrameType {
     Set = 1,
     Response = 2,
     Confirm = 3,
+    /** Ablehnung, z. B. Meta-Seite außerhalb der Liste (beobachtet bei 0x0033 mit Offset + 64 > Länge) */
+    Reject = 4,
 }
 
 export interface Frame {

@@ -95,8 +95,8 @@ const GAP_TRIGGER_DP = 0x02d9;
 const WRITE_TIMEOUT_MS = 30000;
 const WRITE_MAX_TRIES = 2;
 const QUERY_TIMEOUT_MS = 3000;
-/** Lese-Anfragen gehen oft verloren: die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
-const QUERY_MAX_TRIES = 4;
+/** Lese-Anfragen gehen oft verloren (nur ~40 % Treffer): die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
+const QUERY_MAX_TRIES = 8;
 /** Adresse des Lüftungsgeräts */
 const UNIT_ADDR = 2;
 /** Meta-Listen liefern je Anfrage 64 Einträge ab dem Offset im Sub-Selektor */
@@ -397,6 +397,15 @@ class ProxonHesp extends utils.Adapter {
             case FrameType.Set:
                 void this.handleValue('W', f.dst, f, 0);
                 return;
+            case FrameType.Reject: {
+                // Ablehnung unserer Anfrage: nicht wiederholen
+                const qj = this.queryQueue[0];
+                if (qj && qj.sentAt && f.src === qj.dst && f.dst === 1 && f.id === qj.id) {
+                    this.queryQueue.shift();
+                    qj.resolve(null);
+                }
+                return;
+            }
             default:
                 // Quittungen enthalten keine Werte
                 return;
@@ -904,7 +913,7 @@ class ProxonHesp extends utils.Adapter {
     private async readMetaList(mod: number, dp: number, offsets: number[]): Promise<number[] | null> {
         const list: number[] = [];
         for (const o of offsets) {
-            const p = await this.query(mod, dp, o, 1, 4);
+            const p = await this.query(mod, dp, o, 1);
             if (!p) {
                 return null;
             }
@@ -917,7 +926,7 @@ class ProxonHesp extends utils.Adapter {
 
     /** Länge des Verzeichnisses ermitteln: das Gerät antwortet nur, solange Offset + 64 <= Länge */
     private async findDirectoryOffsets(mod: number, status: (t: string) => Promise<void>): Promise<number[] | null> {
-        const first = await this.query(mod, 0x0033, 0, 1, 3);
+        const first = await this.query(mod, 0x0033, 0, 1);
         if (!first) {
             return null;
         }
@@ -929,7 +938,7 @@ class ProxonHesp extends utils.Adapter {
         let fail = -1;
         for (let o = META_PAGE; o < 4096; o += META_PAGE) {
             await status(`Verzeichnis, prüfe Offset ${o}`);
-            const p = await this.query(mod, 0x0033, o, 1, 4);
+            const p = await this.query(mod, 0x0033, o, 1);
             if (!p) {
                 fail = o;
                 break;
@@ -948,15 +957,15 @@ class ProxonHesp extends utils.Adapter {
         while (hi - lo > 1) {
             const mid = Math.floor((lo + hi) / 2);
             await status(`Verzeichnis, prüfe Offset ${mid}`);
-            // ausbleibende Antwort kann auch eine Kollision sein: hier mehr Versuche
-            if (await this.query(mod, 0x0033, mid, 1, 4)) {
+            // Offset außerhalb der Liste beantwortet das Gerät mit Typ 4 (Ablehnung) -> sofort bekannt
+            if (await this.query(mod, 0x0033, mid, 1)) {
                 lo = mid;
             } else {
                 hi = mid;
             }
         }
         // Gegenprobe nach oben, falls eine Antwort trotz allem verloren ging
-        while (lo + 1 < fail && (await this.query(mod, 0x0033, lo + 1, 1, 4))) {
+        while (lo + 1 < fail && (await this.query(mod, 0x0033, lo + 1, 1))) {
             lo++;
         }
         if (lo !== ok) {
@@ -983,12 +992,12 @@ class ProxonHesp extends utils.Adapter {
 
     /** Name (Meta 0x0001) lesen: Text mit Längenbyte; manche Module verlangen genau die passende Anzahl */
     private async readName(mod: number): Promise<void> {
-        const p = await this.query(mod, 0x0001, 0, 1, 2);
+        const p = await this.query(mod, 0x0001, 0, 1);
         if (!p || !p.length || p[0] >= 0x20 || p.length > p[0]) {
             return;
         }
         for (const c of [p[0] + 1, p[0]]) {
-            if (await this.query(mod, 0x0001, 0, c, 2)) {
+            if (await this.query(mod, 0x0001, 0, c)) {
                 return;
             }
         }

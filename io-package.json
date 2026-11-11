@@ -4,8 +4,8 @@
         "version": "0.4.1",
         "news": {
             "0.4.1": {
-                "en": "Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master); read parameters: up to 4 tries, queries sent without delay",
-                "de": "Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben); Parameter lesen: bis zu 4 Versuche, Anfragen ohne Verzögerung"
+                "en": "Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master); read parameters: up to 8 tries, rejections (type 4) recognised",
+                "de": "Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben); Parameter lesen: bis zu 8 Versuche, Ablehnungen (Typ 4) werden erkannt"
             },
             "0.4.0": {
                 "en": "Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each",

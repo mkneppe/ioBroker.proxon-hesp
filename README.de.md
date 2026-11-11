@@ -99,7 +99,7 @@ Unter „Steuerung“ lässt sich eine regelmäßige Abfrage des Lüftungsgerät
 h0 h1 h2 | id (uint32 LE) | len (Nibbles) | Nutzdaten | CRC16 LE
 ```
 
-- Kopf: 24 Bit LE, Bit 0–3 Typ (0 Anfrage, 1 Setzen, 2 Antwort, 3 Quittung),
+- Kopf: 24 Bit LE, Bit 0–3 Typ (0 Anfrage, 1 Setzen, 2 Antwort, 3 Quittung, 4 Ablehnung, z. B. Meta-Seite außerhalb der Liste),
   Bit 4–13 Quelle, Bit 14–23 Ziel (vermutete Deutung, mit Mitschnitten konsistent)
 - CRC: Init `0xFFFF`, Polynom `0x8048` reflektiert, 16 Schiebeschritte je Byte
 - Längenfeld läuft bei 128-Byte-Antworten vermutlich über (`0x00`)
@@ -111,7 +111,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 ### 0.4.1 (2026-11-09)
 
 - Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
-- Parameter lesen: bis zu 4 Versuche je Anfrage, Anfrage wird ohne Verzögerung gesendet (die Buslücke ist nur ~70–80 ms lang)
+- Parameter lesen: bis zu 8 Versuche je Anfrage (die Buslücke ist nur ~70–80 ms lang, nur gut 40 % der Anfragen kommen durch), Ablehnungen (Typ 4) werden sofort erkannt
 
 ### 0.4.0 (2026-11-09)
 
