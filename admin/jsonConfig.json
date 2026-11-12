@@ -436,6 +436,27 @@
                     "lg": 6,
                     "xl": 6
                 },
+                "lockedSetpoint": {
+                    "type": "select",
+                    "label": "Sollwert bei aktiver Tastensperre",
+                    "options": [
+                        {
+                            "label": "Sperre kurz aufheben (SET 0x0199 = 0, dann Sollwert)",
+                            "value": "unlock"
+                        },
+                        {
+                            "label": "Sollwert ablehnen",
+                            "value": "reject"
+                        }
+                    ],
+                    "newLine": true,
+                    "hidden": "!data.allowWrite",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
                 "hdrParams": {
                     "type": "header",
                     "text": "Parameter des Lüftungsgeräts",
