@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { autoDecode, decodeAs, decodeCalendar, decodeClock } from '../src/lib/decode';
+import { autoDecode, decodeAs, decodeCalendar, decodeClock, encodeCalendar } from '../src/lib/decode';
 import { buildFrame, crc16, decodeFrame, FrameParser } from '../src/lib/hesp';
 
 const fixture = fs
@@ -106,6 +106,10 @@ test('Dekodierung: Kalender, Uhrzeit, Lüfterstufe', () => {
     const b = Buffer.alloc(4);
     b.writeUInt32LE(v >>> 0);
     assert.equal(decodeCalendar(b), '2026-09-23T12:50');
+    assert.equal(encodeCalendar(new Date(2026, 8, 23, 12, 50)), v >>> 0);
+    const e = Buffer.alloc(4);
+    e.writeUInt32LE(encodeCalendar(new Date(2026, 10, 12, 22, 17)));
+    assert.equal(decodeCalendar(e), '2026-11-12T22:17');
     const c = Buffer.alloc(4);
     c.writeUInt32LE(14 | (5 << 5) | (30 << 11));
     assert.equal(decodeClock(c), '14:05:30');

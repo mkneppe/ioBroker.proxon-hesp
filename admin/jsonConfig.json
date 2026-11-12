@@ -436,6 +436,48 @@
                     "lg": 6,
                     "xl": 6
                 },
+                "allowClockWrite": {
+                    "type": "checkbox",
+                    "label": "Uhr des Lüftungsgeräts stellen erlauben",
+                    "help": "SET 0x032E an das Lüftungsgerät; das zentrale Bedienelement (BDE) übernimmt die Uhrzeit von dort. Nach dem Aktivieren speichern.",
+                    "newLine": true,
+                    "hidden": "!data.allowWrite",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "clockSet": {
+                    "type": "sendTo",
+                    "label": "Uhr jetzt stellen",
+                    "command": "setClock",
+                    "jsonData": "{\"offset\": \"${data.clockOffsetMin}\"}",
+                    "useNative": true,
+                    "showProcess": true,
+                    "newLine": true,
+                    "hidden": "!data.allowWrite || !data.allowClockWrite",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
+                "clockOffsetMin": {
+                    "type": "number",
+                    "label": "Versatz der Uhr (Minuten)",
+                    "help": "Uhrzeit = Systemzeit + Versatz, z. B. 5 = die Uhr geht 5 min vor; wird auch vom Datenpunkt Zentrale.Geraet.Uhr_stellen verwendet (dafür speichern)",
+                    "min": -1440,
+                    "max": 1440,
+                    "step": 1,
+                    "newLine": true,
+                    "hidden": "!data.allowWrite || !data.allowClockWrite",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
                 "hdrParams": {
                     "type": "header",
                     "text": "Parameter des Lüftungsgeräts",

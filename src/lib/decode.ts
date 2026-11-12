@@ -66,6 +66,19 @@ export function decodeCalendar(p: Buffer): string | null {
     return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
 }
 
+/** Gegenstück zu decodeCalendar: lokale Zeit (Minutenauflösung) -> uint32 für SET 0x032E */
+export function encodeCalendar(d: Date): number {
+    return (
+        (d.getMinutes() |
+            (d.getHours() << 6) |
+            (d.getDay() << 11) |
+            ((d.getFullYear() - 2000) << 14) |
+            ((d.getMonth() + 1) << 21) |
+            (d.getDate() << 25)) >>>
+        0
+    );
+}
+
 /** DP 0x0330: gepackte lokale Uhrzeit -> "HH:MM:SS" */
 export function decodeClock(p: Buffer): string | null {
     if (p.length !== 4) {

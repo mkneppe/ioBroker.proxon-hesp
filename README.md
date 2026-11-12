@@ -46,6 +46,7 @@ and read the parameters of all bus modules (read queries only).
 | `<module>.<name>` | Named values according to the **mappings** table (a leading `/` creates the state below the instance root) |
 | `<module>.Register.<R/W>_<DP>` | Every register seen: `value` (auto-decoded), `raw` (hex), `lastSeen`, `count` |
 | `<room>.Heizelement_freigeben` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The central control unit (BDE) is not informed. The key lock (`0x0199`) cannot be switched this way: the central control unit rewrites it about every 11 s |
+| `Zentrale.Geraet.Uhr_stellen` | Only if "allow setting the clock" is enabled: button; sets the clock of the ventilation unit (SET `1>2 0x032E`) to system time + offset (settings). The button "Uhr jetzt stellen" in the settings does the same. Only date, hour and minute are set – the unit keeps counting its own seconds; the minute is chosen so that the deviation is at most 30 s. The central control unit queries the time from the unit and then shows the new time |
 | `<room>.Sollwert` | Only if writing is enabled: writable setpoint, sent as SET `0x01FB` to the room module and acknowledged after the module reports it back. It is sent in the bus gaps after `2>1 0x02D9` and after `40>1 0x0194` (only ~70 ms each); frames there often collide with bus traffic, so up to 10 attempts are made. So far an active key lock does not appear to prevent the module from accepting it |
 | `<module>.Meta.*` | Self-description of a module (name, DP list, type codes, access, units, error text) |
 | `<module>.Parameter.*` | Values of all registers of a module, read with *read parameters* |
@@ -94,6 +95,8 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 - Optional learning log: every value change and all unrecognised bytes in daily files
 - Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately; after 12 unanswered queries in a row the gateway connection is re-established
 - Optional: enable/lock the room heater (SET `0x0196`, acknowledged via `0x0194` bit 3)
+- Optional: set the clock of the ventilation unit (SET `0x032E`, system time + offset in minutes)
+- Setpoints: sent in two bus gaps per cycle, up to 10 tries
 
 ### 0.4.0 (2026-11-09)
 

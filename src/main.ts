@@ -6,7 +6,7 @@ import * as utils from '@iobroker/adapter-core';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
-import { autoDecode, decodeAs, type ValueType } from './lib/decode';
+import { autoDecode, decodeAs, decodeCalendar, decodeClock, encodeCalendar, type ValueType } from './lib/decode';
 import { buildFrame, buildQuery, type Frame, FrameParser, FrameType, toHex } from './lib/hesp';
 import { decodeParam, PARAM_ACCESS, PARAM_NAMES, PARAM_UNITS, parseDpList, ROOM_PARAM_NAMES } from './lib/params';
 
@@ -59,6 +59,10 @@ interface Config {
     writeStep: number;
     /** Heizelement der Raummodule freigeben/sperren (SET 0x0196) erlauben */
     allowHeaterWrite: boolean;
+    /** Uhr des Lüftungsgeräts stellen (SET 1>2 0x032E) erlauben */
+    allowClockWrite: boolean;
+    /** gewünschter Versatz der Geräteuhr gegenüber der Systemzeit in Minuten */
+    clockOffsetMin: number;
     /** Parameter des Lüftungsgeräts regelmäßig per Lese-Anfrage abfragen */
     pollEnabled: boolean;
     pollMinutes: number;
@@ -90,11 +94,14 @@ interface ParamDirectory {
 
 /** Ausstehender Schreibauftrag: Sollwert (SET 0x01FB) oder Heizelement-Freigabe (SET 0x0196) */
 interface WriteJob {
-    kind: 'setpoint' | 'heater';
+    /** clock: value = Versatz in Minuten, die Uhrzeit wird erst im Sendemoment ermittelt */
+    kind: 'setpoint' | 'heater' | 'clock';
     mod: number;
     value: number;
     tries: number;
     sentAt: number;
+    /** clock: gesendete Uhrzeit (ms) */
+    clockSent?: number;
 }
 
 /** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage des zentralen Bedienelements (BDE)) */
@@ -106,6 +113,8 @@ const WRITE_GAP_SRC = 40;
 const WRITE_GAP_DP = 0x0194;
 /** Schreibbefehle kollidieren oft mit der BDE (Lücke nur ~70 ms, TCP-Laufzeit schwankt) – mehrere Versuche */
 const WRITE_MAX_TRIES = 10;
+/** Uhr stellen: Quittung kommt sofort, sonst in der nächsten passenden Lücke wiederholen */
+const CLOCK_TIMEOUT_MS = 2000;
 const QUERY_TIMEOUT_MS = 3000;
 /** Lese-Anfragen gehen oft verloren (nur ~40 % Treffer): die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
 const QUERY_MAX_TRIES = 8;
@@ -160,6 +169,8 @@ class ProxonHesp extends utils.Adapter {
     private hourOk = 0;
     private hourBad = 0;
     private controlMods = new Set<number>();
+    /** zuletzt gemeldete Sekunden der Geräteuhr (0x0330) */
+    private unitClock?: { sec: number; at: number };
     private writeQueue: WriteJob[] = [];
     private reportedSetpoint = new Map<number, number>();
     /** Raummodule mit schaltbarem Heizelement und zuletzt gemeldete Freigabe (0x0194 Bit 3) */
@@ -180,6 +191,7 @@ class ProxonHesp extends utils.Adapter {
         this.on('ready', this.onReady.bind(this));
         this.on('stateChange', this.onStateChange.bind(this));
         this.on('unload', this.onUnload.bind(this));
+        this.on('message', this.onMessage.bind(this));
     }
 
     /* ------------------------------------------------------------------ Start */
@@ -298,6 +310,21 @@ class ProxonHesp extends utils.Adapter {
                 }
                 this.log.info(`Heizelement schaltbar für Raummodule ${[...this.heaterMods].join(', ')}`);
             }
+        }
+        if (this.cfg.allowWrite && this.cfg.allowClockWrite) {
+            this.cfg.clockOffsetMin = Math.round(Number(this.cfg.clockOffsetMin) || 0);
+            await this.ensureModule(UNIT_ADDR);
+            await this.ensureObject(this.clockButtonId(), {
+                type: 'state',
+                common: {
+                    name: 'Uhr des Lüftungsgeräts auf Systemzeit + Versatz (Einstellungen) stellen',
+                    type: 'boolean',
+                    role: 'button',
+                    read: false,
+                    write: true,
+                },
+            });
+            this.subscribeStates(this.clockButtonId());
         }
 
         await this.setupParameters();
@@ -439,6 +466,12 @@ class ProxonHesp extends utils.Adapter {
                     this.queryFailStreak = 0;
                     qj.resolve(f.payload);
                 }
+                if (f.dp === 0x0330 && f.src === UNIT_ADDR && f.payload.length === 4) {
+                    const sec = Number(decodeClock(f.payload)?.slice(6));
+                    if (Number.isFinite(sec)) {
+                        this.unitClock = { sec, at: Date.now() };
+                    }
+                }
                 if (f.dp === 0x0194 && f.payload.length >= 2 && this.heaterMods.has(f.src)) {
                     void this.onHeaterReport(f.src, (f.payload.readUInt16LE(0) & 0x0008) !== 0);
                 }
@@ -471,6 +504,11 @@ class ProxonHesp extends utils.Adapter {
             }
             case FrameType.Confirm: {
                 const wj = this.writeQueue[0];
+                if (wj && wj.kind === 'clock' && wj.sentAt && Date.now() - wj.sentAt < 1500 && f.src === UNIT_ADDR && f.dst === 1 && f.dp === 0x032e) {
+                    this.writeQueue.shift();
+                    this.log.info(`Uhr des Lüftungsgeräts gestellt (${this.clockLabel(wj)}, quittiert nach ${Date.now() - wj.sentAt} ms)`);
+                    return;
+                }
                 // nur Quittungen kurz nach unserem Senden zählen (die BDE schreibt 0x0199 selbst alle ~11 s)
                 if (wj && wj.sentAt && Date.now() - wj.sentAt < 300 && f.src === wj.mod && f.dst === 1 && [0x0199, 0x01fb, 0x0196].includes(f.dp)) {
                     this.log.debug(`Modul ${this.moduleFolder(wj.mod)} quittiert SET 0x${f.dp.toString(16).padStart(4, '0')} (${Date.now() - wj.sentAt} ms)`);
@@ -790,6 +828,12 @@ class ProxonHesp extends utils.Adapter {
             this.requestSetpoint(id, state.val);
             return;
         }
+        if (id === `${this.namespace}.${this.clockButtonId()}`) {
+            if (state.val) {
+                this.requestClock(this.cfg.clockOffsetMin);
+            }
+            return;
+        }
         if (id.endsWith('.Heizelement_freigeben')) {
             this.requestHeater(id, state.val);
             return;
@@ -819,6 +863,45 @@ class ProxonHesp extends utils.Adapter {
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'setpoint' || j.mod !== mod || j.sentAt !== 0);
         this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0 });
         this.log.info(`Sollwert-Auftrag ${rel} (Modul ${mod}) = ${value} °C eingereiht`);
+    }
+
+    private clockButtonId(): string {
+        return `${this.moduleFolder(UNIT_ADDR)}.Geraet.Uhr_stellen`;
+    }
+
+    private clockLabel(job: WriteJob): string {
+        const t = job.clockSent ? new Date(job.clockSent).toLocaleString('de-DE') : '?';
+        return `${t}${job.value ? `, Versatz ${job.value > 0 ? '+' : ''}${job.value} min` : ''}`;
+    }
+
+    private requestClock(offsetMin: number): boolean {
+        if (!this.cfg.allowWrite || !this.cfg.allowClockWrite) {
+            this.log.warn('Uhr stellen ist nicht freigegeben (Einstellungen: Schreiben + Uhr stellen erlauben)');
+            return false;
+        }
+        const value = Math.round(Number(offsetMin) || 0);
+        if (Math.abs(value) > 24 * 60) {
+            this.log.warn(`Uhr-Versatz ${value} min zu groß – ignoriert`);
+            return false;
+        }
+        this.writeQueue = this.writeQueue.filter(j => j.kind !== 'clock' || j.sentAt !== 0);
+        this.writeQueue.push({ kind: 'clock', mod: UNIT_ADDR, value, tries: 0, sentAt: 0 });
+        this.log.info(`Auftrag Uhr stellen (Versatz ${value} min) eingereiht`);
+        return true;
+    }
+
+    private onMessage(obj: ioBroker.Message): void {
+        if (obj?.command !== 'setClock') {
+            return;
+        }
+        const msg = (obj.message ?? {}) as { offset?: unknown };
+        const offset = msg.offset === undefined || msg.offset === '' ? this.cfg.clockOffsetMin : Number(msg.offset);
+        const ok = this.requestClock(offset);
+        if (obj.callback) {
+            this.sendTo(obj.from, obj.command, ok
+                ? { result: `Auftrag eingereiht: Uhr = Systemzeit ${offset ? `${offset > 0 ? '+' : ''}${offset} min` : ''} (Ergebnis im Log)` }
+                : { error: 'Uhr stellen nicht möglich – Schreiben und „Uhr stellen erlauben“ aktivieren und speichern' }, obj.callback);
+        }
     }
 
     private requestHeater(id: string, val: ioBroker.StateValue): void {
@@ -873,13 +956,16 @@ class ProxonHesp extends utils.Adapter {
     /** gibt true zurück, wenn in dieser Lücke gesendet wurde */
     private writeTick(f: Frame): boolean {
         const job = this.writeQueue[0];
+        const timeout = job.kind === 'clock' ? CLOCK_TIMEOUT_MS : WRITE_TIMEOUT_MS;
         if (job.tries >= WRITE_MAX_TRIES && !job.sentAt) {
-            job.sentAt = Date.now() - WRITE_TIMEOUT_MS - 1;
+            job.sentAt = Date.now() - timeout - 1;
         }
-        if (job.sentAt && Date.now() - job.sentAt > WRITE_TIMEOUT_MS) {
+        if (job.sentAt && Date.now() - job.sentAt > timeout) {
             if (job.tries >= WRITE_MAX_TRIES) {
                 this.writeQueue.shift();
-                if (job.kind === 'heater') {
+                if (job.kind === 'clock') {
+                    this.log.warn('Uhr stellen nicht quittiert – aufgegeben');
+                } else if (job.kind === 'heater') {
                     this.log.warn(`Heizelement-Freigabe ${job.value} an Modul ${job.mod} nicht bestätigt – aufgegeben`);
                     this.restoreHeater(job.mod);
                 } else {
@@ -895,6 +981,31 @@ class ProxonHesp extends utils.Adapter {
         const gap40 = f.src === WRITE_GAP_SRC && f.dp === WRITE_GAP_DP && f.dst === 1;
         const gap2d9 = f.src === 2 && f.dp === GAP_TRIGGER_DP;
         if (!job.sentAt && (gap40 || gap2d9) && this.sock) {
+            if (job.kind === 'clock') {
+                // 0x032E setzt nur Datum/Stunde/Minute, der Sekundenzähler des Geräts läuft weiter (beobachtet): die Minute so
+                // wählen, dass Minute + Gerätesekunden der Sollzeit am nächsten kommt (Restfehler ≤ 30 s)
+                const t = Date.now() + job.value * 60000;
+                let unitSec: number;
+                if (this.unitClock && Date.now() - this.unitClock.at < 120000) {
+                    unitSec = (this.unitClock.sec + (Date.now() - this.unitClock.at) / 1000) % 60;
+                } else {
+                    // Sekunden unbekannt: nur nahe einer vollen Minute senden
+                    unitSec = 0;
+                    const r = t % 60000;
+                    if (r > 8000 && r < 52000) {
+                        return false;
+                    }
+                }
+                const minute = Math.round((t - unitSec * 1000) / 60000) * 60000;
+                const p = Buffer.alloc(4);
+                p.writeUInt32LE(encodeCalendar(new Date(minute)));
+                this.sock.write(buildFrame(FrameType.Set, 1, UNIT_ADDR, 0x032e, p));
+                job.sentAt = Date.now();
+                job.clockSent = minute;
+                job.tries++;
+                this.log.debug(`SET 0x032E = ${decodeCalendar(p)} gesendet (Versuch ${job.tries})`);
+                return true;
+            }
             // Formate wie vom zentralen Bedienelement (BDE) gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
             const dp = job.kind === 'heater' ? 0x0196 : 0x01fb;
             const p = Buffer.alloc(job.kind === 'heater' ? 2 : 4);
