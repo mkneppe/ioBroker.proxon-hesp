@@ -59,8 +59,6 @@ interface Config {
     writeStep: number;
     /** Heizelement der Raummodule freigeben/sperren (SET 0x0196) erlauben */
     allowHeaterWrite: boolean;
-    /** Sollwert bei aktiver Tastensperre: 'unlock' = Sperre in derselben Buslücke kurz aufheben (SET 0x0199 = 0), 'reject' = ablehnen */
-    lockedSetpoint: 'unlock' | 'reject';
     /** Parameter des Lüftungsgeräts regelmäßig per Lese-Anfrage abfragen */
     pollEnabled: boolean;
     pollMinutes: number;
@@ -97,21 +95,17 @@ interface WriteJob {
     value: number;
     tries: number;
     sentAt: number;
-    /** Sollwert bei Tastensperre: 'unlock' = SET 0x0199 = 0 gesendet, 'set' = Sperre quittiert aufgehoben, Sollwert in der nächsten Lücke */
-    phase?: 'unlock' | 'set';
-    /** Tastensperre war bei diesem Auftrag aktiv (die Meldung kann zwischendurch kurz „aus“ zeigen) */
-    lockSeen?: boolean;
 }
 
 /** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage des zentralen Bedienelements (BDE)) */
 const GAP_TRIGGER_DP = 0x02d9;
-const WRITE_TIMEOUT_MS = 30000;
+const WRITE_TIMEOUT_MS = 22000;
 /** Schreiben bevorzugt in der längeren Lücke nach der Antwort des Luftqualitätsmoduls (40>1 0x0194: gemessen min. 88 ms, meist ~100 ms;
  *  nach 0x02D9 nur 65–72 ms, dort kollidierten Schreibbefehle mit der nächsten Anfrage der BDE) */
 const WRITE_GAP_SRC = 40;
 const WRITE_GAP_DP = 0x0194;
 /** Schreibbefehle kollidieren oft mit der BDE (Lücke nur ~70 ms, TCP-Laufzeit schwankt) – mehrere Versuche */
-const WRITE_MAX_TRIES = 6;
+const WRITE_MAX_TRIES = 10;
 const QUERY_TIMEOUT_MS = 3000;
 /** Lese-Anfragen gehen oft verloren (nur ~40 % Treffer): die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
 const QUERY_MAX_TRIES = 8;
@@ -171,10 +165,6 @@ class ProxonHesp extends utils.Adapter {
     /** Raummodule mit schaltbarem Heizelement und zuletzt gemeldete Freigabe (0x0194 Bit 3) */
     private heaterMods = new Set<number>();
     private reportedHeater = new Map<number, boolean>();
-    /** zuletzt gemeldete Tastensperre je Raummodul (0x0194 Bit 11) */
-    private reportedLock = new Map<number, boolean>();
-    /** Zeitpunkt der letzten Antwort 40>1 0x0194 (ohne Modul 40 wird in der Lücke nach 0x02D9 geschrieben) */
-    private lastWriteGapSeen = 0;
     private queryQueue: QueryJob[] = [];
     /** unbeantwortete Anfrage-Versuche in Folge */
     private queryFailStreak = 0;
@@ -448,9 +438,6 @@ class ProxonHesp extends utils.Adapter {
                     this.queryQueue.shift();
                     this.queryFailStreak = 0;
                     qj.resolve(f.payload);
-                }
-                if (f.dp === 0x0194 && f.payload.length >= 2 && this.controlMods.has(f.src)) {
-                    this.reportedLock.set(f.src, (f.payload.readUInt16LE(0) & 0x0800) !== 0);
                 }
                 if (f.dp === 0x0194 && f.payload.length >= 2 && this.heaterMods.has(f.src)) {
                     void this.onHeaterReport(f.src, (f.payload.readUInt16LE(0) & 0x0008) !== 0);
@@ -828,11 +815,6 @@ class ProxonHesp extends utils.Adapter {
             this.restoreSetpoint(mod);
             return;
         }
-        if (this.reportedLock.get(mod) && this.cfg.lockedSetpoint === 'reject') {
-            this.log.warn(`Sollwert für ${rel} abgelehnt: Tastensperre aktiv (Raummodule übernehmen dann keine Sollwerte)`);
-            this.restoreSetpoint(mod);
-            return;
-        }
         // einen evtl. noch wartenden Auftrag für dasselbe Modul ersetzen
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'setpoint' || j.mod !== mod || j.sentAt !== 0);
         this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0 });
@@ -854,9 +836,6 @@ class ProxonHesp extends utils.Adapter {
 
     /** bei jeder Antwort: Zeitüberschreitungen prüfen und in der Buslücke höchstens EIN Telegramm senden (Schreiben vor Lesen) */
     private gapTick(f: Frame): void {
-        if (f.src === WRITE_GAP_SRC && f.dp === WRITE_GAP_DP && f.dst === 1) {
-            this.lastWriteGapSeen = Date.now();
-        }
         const sent = this.writeQueue.length ? this.writeTick(f) : false;
         const q = this.queryQueue[0];
         if (!q) {
@@ -894,22 +873,7 @@ class ProxonHesp extends utils.Adapter {
     /** gibt true zurück, wenn in dieser Lücke gesendet wurde */
     private writeTick(f: Frame): boolean {
         const job = this.writeQueue[0];
-        // nach dem Entsperren (40er-Lücke) folgt der Sollwert in der nächsten 0x02D9-Lücke (~2,9 s später) – ohne auf die Quittung
-        // zu warten (sie geht oft im Busverkehr unter); hat das Entsperren nicht geklappt, ignoriert das Modul den Sollwert einfach
-        if (job.phase === 'unlock' && job.sentAt && f.src === 2 && f.dp === GAP_TRIGGER_DP) {
-            job.phase = 'set';
-            job.sentAt = 0;
-        }
-        if (job.phase === 'unlock' && job.sentAt && Date.now() - job.sentAt > 5000) {
-            job.phase = undefined;
-            job.sentAt = 0;
-        }
-        // Sollwert nach dem Entsperren nicht übernommen: die Sperre ist inzwischen wieder aktiv, also von vorn
-        if (job.phase === 'set' && job.sentAt && Date.now() - job.sentAt > 8000) {
-            job.phase = undefined;
-            job.sentAt = 0;
-        }
-        if (job.tries >= WRITE_MAX_TRIES && !job.sentAt && job.phase === undefined) {
+        if (job.tries >= WRITE_MAX_TRIES && !job.sentAt) {
             job.sentAt = Date.now() - WRITE_TIMEOUT_MS - 1;
         }
         if (job.sentAt && Date.now() - job.sentAt > WRITE_TIMEOUT_MS) {
@@ -926,38 +890,18 @@ class ProxonHesp extends utils.Adapter {
             }
             job.sentAt = 0;
         }
-        // Lücken: nach 40>1 0x0194 (Zyklus +7,9 s) und nach 2>1 0x02D9 (Zyklus 0 s); die BDE schreibt die Tastensperre
-        // der Raummodule bei ca. +2,5…+5 s – zwischen der 40er-Lücke und der folgenden 0x02D9-Lücke bleibt sie also aufgehoben
+        // Lücken: nach 40>1 0x0194 (Zyklus +7,9 s) und nach 2>1 0x02D9 (Zyklus 0 s), je nur ~70 ms lang – Kollisionen mit dem
+        // zentralen Bedienelement sind häufig, daher mehrere Versuche. Die Tastensperre (0x0199) blockiert Fernsollwerte nicht.
         const gap40 = f.src === WRITE_GAP_SRC && f.dp === WRITE_GAP_DP && f.dst === 1;
         const gap2d9 = f.src === 2 && f.dp === GAP_TRIGGER_DP;
         if (!job.sentAt && (gap40 || gap2d9) && this.sock) {
-            // Formate wie vom zentralen Bedienelement (BDE) gesendet: 0x01FB float32, 0x0196/0x0199 uint16 (0/1)
-            // Sperre gilt als aktiv, solange sie gemeldet ist oder wir mitten im Entsperr-Ablauf sind
-            const locked = job.kind === 'setpoint' && (this.reportedLock.get(job.mod) || job.lockSeen);
-            if (locked && job.phase !== 'set') {
-                // Stufe 1 (nur in der 40er-Lücke, ohne Modul 40 in jeder Lücke): Tastensperre aufheben
-                if (!gap40 && Date.now() - this.lastWriteGapSeen < 30000) {
-                    return false;
-                }
-                this.sock.write(buildFrame(FrameType.Set, 1, job.mod, 0x0199, Buffer.alloc(2)));
-                job.phase = 'unlock';
-                job.lockSeen = true;
-                job.sentAt = Date.now();
-                job.tries++;
-                this.log.info(`Tastensperre ${this.moduleFolder(job.mod)} aktiv – hebe sie für den Sollwert kurz auf (Versuch ${job.tries})`);
-                return true;
-            }
-            if (job.phase === 'set') {
-                this.log.info(`Tastensperre ${this.moduleFolder(job.mod)} aufgehoben – sende Sollwert ${job.value} °C`);
-            }
+            // Formate wie vom zentralen Bedienelement (BDE) gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
             const dp = job.kind === 'heater' ? 0x0196 : 0x01fb;
             const p = Buffer.alloc(job.kind === 'heater' ? 2 : 4);
             job.kind === 'heater' ? p.writeUInt16LE(job.value) : p.writeFloatLE(job.value);
             this.sock.write(buildFrame(FrameType.Set, 1, job.mod, dp, p));
             job.sentAt = Date.now();
-            if (job.phase !== 'set') {
-                job.tries++;
-            }
+            job.tries++;
             this.log.debug(`SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`);
             return true;
         }

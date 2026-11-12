@@ -60,7 +60,7 @@ Nach dem Start erscheinen die Werte innerhalb weniger Sekunden. `info.connection
 | `<Modul>.<Name>` | Benannte Werte gemäß Tabelle **Zuordnungen** (Name mit führendem `/` = ab Instanzwurzel, z. B. `/Wohnen.Temperatur`) |
 | `<Modul>.Register.<R/W>_<DP>` | Jedes mitgelesene Register: `value` (automatisch gedeutet: Zahl, Text oder Liste), `raw` (hex), `lastSeen`, `count` |
 | `<Raum>.Heizelement_freigeben` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Das zentrale Bedienelement (BDE) erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: das zentrale Bedienelement schreibt sie alle ~11 s neu |
-| `<Raum>.Sollwert` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt |
+| `<Raum>.Sollwert` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt. Gesendet wird in den Buslücken nach `2>1 0x02D9` und nach `40>1 0x0194` (je nur ~70 ms); da Telegramme dort oft mit dem Busverkehr kollidieren, bis zu 10 Versuche. Eine aktive Tastensperre verhindert die Übernahme nach bisheriger Beobachtung nicht |
 | `<Modul>.Meta.*` | Selbstauskunft der Module (Name, DP-Liste, Typcodes, Zugriff, Einheiten, Fehlertext), durch „Parameter lesen“ oder wenn der Master sie abfragt |
 | `<Modul>.Parameter.*` | Mit „Parameter lesen“ abgefragte Werte aller Register eines Moduls |
 | `Parameter_lesen*` | Knopf und Status (aktiv, Fortschritt, Text, Zeitpunkt) des Parameter-Lesens |

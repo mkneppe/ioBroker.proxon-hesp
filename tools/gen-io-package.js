@@ -202,7 +202,6 @@ const io = {
         writeMax: 28,
         writeStep: 1,
         allowHeaterWrite: false,
-        lockedSetpoint: 'unlock',
         pollEnabled: false,
         pollMinutes: 60,
         pollList: '',
