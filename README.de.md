@@ -59,6 +59,7 @@ Nach dem Start erscheinen die Werte innerhalb weniger Sekunden. `info.connection
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistik |
 | `<Modul>.<Name>` | Benannte Werte gemäß Tabelle **Zuordnungen** (Name mit führendem `/` = ab Instanzwurzel, z. B. `/Wohnen.Temperatur`) |
 | `<Modul>.Register.<R/W>_<DP>` | Jedes mitgelesene Register: `value` (automatisch gedeutet: Zahl, Text oder Liste), `raw` (hex), `lastSeen`, `count` |
+| `<Raum>.Heizelement_freigeben` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Die BDE erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: der Master schreibt sie alle ~11 s neu |
 | `<Raum>.Sollwert` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt |
 | `<Modul>.Meta.*` | Selbstauskunft der Module (Name, DP-Liste, Typcodes, Zugriff, Einheiten, Fehlertext), durch „Parameter lesen“ oder wenn der Master sie abfragt |
 | `<Modul>.Parameter.*` | Mit „Parameter lesen“ abgefragte Werte aller Register eines Moduls |
@@ -121,6 +122,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 - Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
 - Optionales Lernprotokoll: jede Wertänderung und alle nicht erkannten Bytes in Tagesdateien
 - Parameter lesen: bis zu 8 Versuche je Anfrage (die Buslücke ist nur ~70–80 ms lang, nur gut 40 % der Anfragen kommen durch), Ablehnungen (Typ 4) werden sofort erkannt; nach 12 unbeantworteten Anfragen in Folge wird die Verbindung zum Gateway neu aufgebaut
+- Optional: Heizelement je Raum freigeben/sperren (SET `0x0196`, Bestätigung über `0x0194` Bit 3)
 
 ### 0.4.0 (2026-11-09)
 

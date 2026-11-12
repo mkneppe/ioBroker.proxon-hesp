@@ -45,6 +45,7 @@ and read the parameters of all bus modules (read queries only).
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistics |
 | `<module>.<name>` | Named values according to the **mappings** table (a leading `/` creates the state below the instance root) |
 | `<module>.Register.<R/W>_<DP>` | Every register seen: `value` (auto-decoded), `raw` (hex), `lastSeen`, `count` |
+| `<room>.Heizelement_freigeben` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The BDE is not informed. The key lock (`0x0199`) cannot be switched this way: the master rewrites it about every 11 s |
 | `<room>.Sollwert` | Only if writing is enabled: writable setpoint, sent once as SET `0x01FB` to the room module and acknowledged after the module reports it back |
 | `<module>.Meta.*` | Self-description of a module (name, DP list, type codes, access, units, error text) |
 | `<module>.Parameter.*` | Values of all registers of a module, read with *read parameters* |
@@ -92,6 +93,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
 - Optional learning log: every value change and all unrecognised bytes in daily files
 - Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately; after 12 unanswered queries in a row the gateway connection is re-established
+- Optional: enable/lock the room heater (SET `0x0196`, acknowledged via `0x0194` bit 3)
 
 ### 0.4.0 (2026-11-09)
 

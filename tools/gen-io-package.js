@@ -123,8 +123,8 @@ const io = {
         version: pkg.version,
         news: {
             '0.4.1': {
-                en: 'Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master); read parameters: up to 8 tries, rejections (type 4) recognised, reconnect after 12 unanswered queries in a row',
-                de: 'Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben); Parameter lesen: bis zu 8 Versuche, Ablehnungen (Typ 4) werden erkannt, Neuverbindung nach 12 unbeantworteten Anfragen in Folge',
+                en: 'Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the master); read parameters: up to 8 tries, rejections (type 4) recognised, reconnect after 12 unanswered queries in a row; optional: enable/lock the room heater (SET 0x0196)',
+                de: 'Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom Master zyklisch geschrieben); Parameter lesen: bis zu 8 Versuche, Ablehnungen (Typ 4) werden erkannt, Neuverbindung nach 12 unbeantworteten Anfragen in Folge; optional: Heizelement je Raum freigeben/sperren (SET 0x0196)',
             },
             '0.4.0': {
                 en: 'Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each',
@@ -201,6 +201,7 @@ const io = {
         writeMin: 15,
         writeMax: 28,
         writeStep: 1,
+        allowHeaterWrite: false,
         pollEnabled: false,
         pollMinutes: 60,
         pollList: '',

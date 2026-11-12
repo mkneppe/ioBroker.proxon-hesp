@@ -57,6 +57,8 @@ interface Config {
     writeMax: number;
     /** Schrittweite der Sollwerte (die meisten Raummodule kennen nur ganze Grad) */
     writeStep: number;
+    /** Heizelement der Raummodule freigeben/sperren (SET 0x0196) erlauben */
+    allowHeaterWrite: boolean;
     /** Parameter des Lüftungsgeräts regelmäßig per Lese-Anfrage abfragen */
     pollEnabled: boolean;
     pollMinutes: number;
@@ -86,8 +88,9 @@ interface ParamDirectory {
     units: number[];
 }
 
-/** Ausstehender Sollwert-Schreibauftrag */
+/** Ausstehender Schreibauftrag: Sollwert (SET 0x01FB) oder Heizelement-Freigabe (SET 0x0196) */
 interface WriteJob {
+    kind: 'setpoint' | 'heater';
     mod: number;
     value: number;
     tries: number;
@@ -154,6 +157,9 @@ class ProxonHesp extends utils.Adapter {
     private controlMods = new Set<number>();
     private writeQueue: WriteJob[] = [];
     private reportedSetpoint = new Map<number, number>();
+    /** Raummodule mit schaltbarem Heizelement und zuletzt gemeldete Freigabe (0x0194 Bit 3) */
+    private heaterMods = new Set<number>();
+    private reportedHeater = new Map<number, boolean>();
     private queryQueue: QueryJob[] = [];
     /** unbeantwortete Anfrage-Versuche in Folge */
     private queryFailStreak = 0;
@@ -269,6 +275,24 @@ class ProxonHesp extends utils.Adapter {
                 this.subscribeStates(`${this.moduleFolder(mod)}.Sollwert`);
             }
             this.log.info(`Schreiben aktiv für Raummodule ${[...this.controlMods].join(', ')} (${this.cfg.writeMin}–${this.cfg.writeMax} °C, Schritt ${this.cfg.writeStep} °C)`);
+            if (this.cfg.allowHeaterWrite) {
+                for (const mod of this.controlMods) {
+                    this.heaterMods.add(mod);
+                    const id = `${this.moduleFolder(mod)}.Heizelement_freigeben`;
+                    await this.ensureObject(id, {
+                        type: 'state',
+                        common: {
+                            name: 'Heizelement freigeben (schreibbar, wird als SET 0x0196 an das Raummodul gesendet)',
+                            type: 'boolean',
+                            role: 'switch',
+                            read: true,
+                            write: true,
+                        },
+                    });
+                    this.subscribeStates(id);
+                }
+                this.log.info(`Heizelement schaltbar für Raummodule ${[...this.heaterMods].join(', ')}`);
+            }
         }
 
         await this.setupParameters();
@@ -409,6 +433,9 @@ class ProxonHesp extends utils.Adapter {
                     this.queryQueue.shift();
                     this.queryFailStreak = 0;
                     qj.resolve(f.payload);
+                }
+                if (f.dp === 0x0194 && f.payload.length >= 2 && this.heaterMods.has(f.src)) {
+                    void this.onHeaterReport(f.src, (f.payload.readUInt16LE(0) & 0x0008) !== 0);
                 }
                 if (f.dp === 0x01f6 && f.payload.length === 4 && this.controlMods.has(f.src)) {
                     void this.onSetpointReport(f.src, Math.round(f.payload.readFloatLE(0) * 10) / 10);
@@ -751,6 +778,10 @@ class ProxonHesp extends utils.Adapter {
             this.requestSetpoint(id, state.val);
             return;
         }
+        if (id.endsWith('.Heizelement_freigeben')) {
+            this.requestHeater(id, state.val);
+            return;
+        }
         if (id === `${this.namespace}.Parameter_lesen` && state.val) {
             void this.readParameters();
         }
@@ -773,12 +804,24 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
         // einen evtl. noch wartenden Auftrag für dasselbe Modul ersetzen
-        this.writeQueue = this.writeQueue.filter(j => j.mod !== mod || j.sentAt !== 0);
-        this.writeQueue.push({ mod, value, tries: 0, sentAt: 0 });
+        this.writeQueue = this.writeQueue.filter(j => j.kind !== 'setpoint' || j.mod !== mod || j.sentAt !== 0);
+        this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0 });
         this.log.info(`Sollwert-Auftrag ${rel} (Modul ${mod}) = ${value} °C eingereiht`);
     }
 
-    /** bei jeder Antwort aufgerufen: Zeitüberschreitung prüfen, in der Buslücke senden */
+    private requestHeater(id: string, val: ioBroker.StateValue): void {
+        const rel = id.substring(this.namespace.length + 1).replace(/\.Heizelement_freigeben$/, '');
+        const mod = [...this.heaterMods].find(m => this.moduleFolder(m) === rel);
+        if (mod === undefined || (typeof val !== 'boolean' && val !== 0 && val !== 1)) {
+            this.log.warn(`Ungültiger Heizelement-Auftrag ${id} = ${val}`);
+            return;
+        }
+        const value = val ? 1 : 0;
+        this.writeQueue = this.writeQueue.filter(j => j.kind !== 'heater' || j.mod !== mod || j.sentAt !== 0);
+        this.writeQueue.push({ kind: 'heater', mod, value, tries: 0, sentAt: 0 });
+        this.log.info(`Heizelement-Auftrag ${rel} (Modul ${mod}) = ${value ? 'freigeben' : 'sperren'} eingereiht`);
+    }
+
     /** bei jeder Antwort: Zeitüberschreitungen prüfen und in der Buslücke höchstens EIN Telegramm senden (Schreiben vor Lesen) */
     private gapTick(f: Frame): void {
         const sent = this.writeQueue.length ? this.writeTick(f) : false;
@@ -820,20 +863,27 @@ class ProxonHesp extends utils.Adapter {
         const job = this.writeQueue[0];
         if (job.sentAt && Date.now() - job.sentAt > WRITE_TIMEOUT_MS) {
             if (job.tries >= WRITE_MAX_TRIES) {
-                this.log.warn(`Sollwert ${job.value} °C an Modul ${job.mod} nicht bestätigt – aufgegeben`);
                 this.writeQueue.shift();
-                this.restoreSetpoint(job.mod);
+                if (job.kind === 'heater') {
+                    this.log.warn(`Heizelement-Freigabe ${job.value} an Modul ${job.mod} nicht bestätigt – aufgegeben`);
+                    this.restoreHeater(job.mod);
+                } else {
+                    this.log.warn(`Sollwert ${job.value} °C an Modul ${job.mod} nicht bestätigt – aufgegeben`);
+                    this.restoreSetpoint(job.mod);
+                }
                 return false;
             }
             job.sentAt = 0;
         }
         if (!job.sentAt && f.src === 2 && f.dp === GAP_TRIGGER_DP && this.sock) {
-            const p = Buffer.alloc(4);
-            p.writeFloatLE(job.value);
-            this.sock.write(buildFrame(FrameType.Set, 1, job.mod, 0x01fb, p));
+            // Formate wie von der BDE gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
+            const dp = job.kind === 'heater' ? 0x0196 : 0x01fb;
+            const p = Buffer.alloc(job.kind === 'heater' ? 2 : 4);
+            job.kind === 'heater' ? p.writeUInt16LE(job.value) : p.writeFloatLE(job.value);
+            this.sock.write(buildFrame(FrameType.Set, 1, job.mod, dp, p));
             job.sentAt = Date.now();
             job.tries++;
-            this.log.debug(`SET 0x01FB = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`);
+            this.log.debug(`SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`);
             return true;
         }
         return false;
@@ -843,14 +893,37 @@ class ProxonHesp extends utils.Adapter {
         this.reportedSetpoint.set(mod, value);
         const job = this.writeQueue[0];
         let confirmed = false;
-        if (job && job.mod === mod && job.sentAt && Math.abs(job.value - value) < 0.05) {
+        if (job && job.kind === 'setpoint' && job.mod === mod && job.sentAt && Math.abs(job.value - value) < 0.05) {
             this.writeQueue.shift();
             confirmed = true;
             this.log.info(`Sollwert ${value} °C von ${this.moduleFolder(mod)} bestätigt`);
         }
         // solange ein Auftrag für dieses Modul aussteht, den gewünschten Wert nicht überschreiben
-        if (!this.writeQueue.some(j => j.mod === mod)) {
+        if (!this.writeQueue.some(j => j.kind === 'setpoint' && j.mod === mod)) {
             await this.write(`${this.moduleFolder(mod)}.Sollwert`, value, confirmed);
+        }
+    }
+
+    /** das Modul meldet die Freigabe ~10 s nach dem SET in 0x0194 Bit 3 */
+    private async onHeaterReport(mod: number, on: boolean): Promise<void> {
+        this.reportedHeater.set(mod, on);
+        const job = this.writeQueue[0];
+        let confirmed = false;
+        if (job && job.kind === 'heater' && job.mod === mod && job.sentAt && (job.value === 1) === on) {
+            this.writeQueue.shift();
+            confirmed = true;
+            this.log.info(`Heizelement ${this.moduleFolder(mod)} ${on ? 'freigegeben' : 'gesperrt'} (bestätigt)`);
+        }
+        if (!this.writeQueue.some(j => j.kind === 'heater' && j.mod === mod)) {
+            await this.write(`${this.moduleFolder(mod)}.Heizelement_freigeben`, on, confirmed);
+        }
+    }
+
+    private restoreHeater(mod: number): void {
+        const v = this.reportedHeater.get(mod);
+        if (v !== undefined) {
+            void this.setState(`${this.moduleFolder(mod)}.Heizelement_freigeben`, v, true);
+            this.lastWritten.set(`${this.moduleFolder(mod)}.Heizelement_freigeben`, { val: v, ts: Date.now() });
         }
     }
 

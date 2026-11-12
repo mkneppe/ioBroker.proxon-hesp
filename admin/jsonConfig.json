@@ -424,6 +424,18 @@
                     "lg": 2,
                     "xl": 2
                 },
+                "allowHeaterWrite": {
+                    "type": "checkbox",
+                    "label": "Heizelement der Raummodule freigeben/sperren erlauben (SET 0x0196)",
+                    "help": "Legt <Raum>.Heizelement_freigeben an. Die BDE erfährt davon nichts und zeigt ggf. den alten Zustand.",
+                    "newLine": true,
+                    "hidden": "!data.allowWrite",
+                    "xs": 12,
+                    "sm": 12,
+                    "md": 6,
+                    "lg": 6,
+                    "xl": 6
+                },
                 "hdrParams": {
                     "type": "header",
                     "text": "Parameter des Lüftungsgeräts",
