@@ -37,7 +37,7 @@ for (const r of rooms) {
     mappings.push(M(r, 'R', 0x01f4, 'Temperatur', { type: 'float32', unit: '°C', history: true, min: -20, max: 60 }));
     mappings.push(M(r, 'R', 0x01f6, 'SollTemperaturModul', { type: 'float32', unit: '°C' }));
     mappings.push(M(r, 'R', 0x01fa, 'SollTemperaturZentrale', { type: 'float32', unit: '°C' }));
-    // [OB] per Bedienteil-Tests 2026-11-08 ermittelt
+    // [OB] per Tests am zentralen Bedienelement 2026-11-08 ermittelt
     mappings.push(M(r, 'W', 0x01f8, 'Fuehlerkorrektur', { type: 'float32', unit: '°C', min: -10, max: 10 }));
     mappings.push(M(r, 'W', 0x019a, 'Heizanforderung', { type: 'uint8', states: '0:im Sollbereich;1:Heizbedarf;2:zu warm' }));
     mappings.push(M(r, 'R', 0x0194, 'Heizelement_freigegeben', { type: 'uint16', bit: 3 }));
@@ -86,7 +86,7 @@ mappings.push(M(C, 'W', 0x01f8, 'Luefter.Intensivlueftung', { type: 'uint32', bi
 mappings.push(
     M(C, 'W', 0x020a, 'Betrieb.Betriebsart', { type: 'uint16', min: 0, max: 4, states: '0:Aus;1:Eco-Sommer;2:Eco-Winter;3:Komfort;4:Ofen' }),
 );
-// Raum des zentralen Bedienteils („Wohnen“), ohne eigenes Raummodul [DN][OB]
+// Raum des zentralen Bedienelements (BDE) („Wohnen“), ohne eigenes Raummodul [DN][OB]
 mappings.push(M(C, 'W', 0x0226, '/Wohnen.Temperatur', { type: 'float32', unit: '°C', history: true, min: -20, max: 60 }));
 mappings.push(M(C, 'W', 0x0227, '/Wohnen.Sollwert', { type: 'float32', unit: '°C', min: 10, max: 35 }));
 // Ist/Soll eines Raummoduls, die der Master zusätzlich an das Lüftungsgerät gibt (bei der Testanlage Modul 13) [OB]

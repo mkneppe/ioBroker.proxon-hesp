@@ -41,8 +41,8 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 - **Verbindung:** IP-Adresse und Port des Gateways.
 - **Module:** Busadresse → Ordnername. Übliche Belegung:
   - `2` = Lüftungsgerät
-  - `10`–`15` = Raummodule
-  - Bei der untersuchten Anlage entsprachen 10–15 der Reihenfolge im zentralen Bedienteil: Diele, Schlafen, Kind 1–4.
+  - `10`–`15` = Raummodule, vermutlich Neben-Bedienelemente (NBE; sie melden als Namen „Nbe“)
+  - Bei der untersuchten Anlage entsprachen 10–15 der Reihenfolge im zentralen Bedienelement (BDE): Diele, Schlafen, Kind 1–4.
   - Unbekannte Teilnehmer erscheinen als `Modul_<Adresse>`.
 - **Zuordnungen:** Die Standardzeilen passen für eine FWT 2-R mit BDE Comfort. Sie lassen sich beliebig ergänzen.
 - **Steuerung** (optional): Schreiben von Raum-Sollwerten freigeben, regelmäßige Parameter-Abfrage.
@@ -59,7 +59,7 @@ Nach dem Start erscheinen die Werte innerhalb weniger Sekunden. `info.connection
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistik |
 | `<Modul>.<Name>` | Benannte Werte gemäß Tabelle **Zuordnungen** (Name mit führendem `/` = ab Instanzwurzel, z. B. `/Wohnen.Temperatur`) |
 | `<Modul>.Register.<R/W>_<DP>` | Jedes mitgelesene Register: `value` (automatisch gedeutet: Zahl, Text oder Liste), `raw` (hex), `lastSeen`, `count` |
-| `<Raum>.Heizelement_freigeben` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Die BDE erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: der Master schreibt sie alle ~11 s neu |
+| `<Raum>.Heizelement_freigeben` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Das zentrale Bedienelement (BDE) erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: das zentrale Bedienelement schreibt sie alle ~11 s neu |
 | `<Raum>.Sollwert` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt |
 | `<Modul>.Meta.*` | Selbstauskunft der Module (Name, DP-Liste, Typcodes, Zugriff, Einheiten, Fehlertext), durch „Parameter lesen“ oder wenn der Master sie abfragt |
 | `<Modul>.Parameter.*` | Mit „Parameter lesen“ abgefragte Werte aller Register eines Moduls |
@@ -151,7 +151,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 ### 0.1.2 (2026-11-08)
 
 - Raummodule: Heizanforderung (`0x019A`), Heizelement freigegeben und Tastensperre (`0x0194` Bit 3/11)
-- „Wohnen“ (Raum des zentralen Bedienteils) als eigener Ordner, Referenzraum-Werte `0x0229`/`0x022A`
+- „Wohnen“ (Raum des zentralen Bedienelements) als eigener Ordner, Referenzraum-Werte `0x0229`/`0x022A`
 - Zuordnungsnamen mit führendem `/` werden ab der Instanzwurzel angelegt
 
 ### 0.1.1 (2026-11-08)

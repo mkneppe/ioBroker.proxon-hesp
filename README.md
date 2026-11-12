@@ -30,8 +30,8 @@ and read the parameters of all bus modules (read queries only).
 3. **Instance:**
    - **Connection:** IP address and port of the gateway.
    - **Modules:** map bus addresses to folder names.
-     - `2` = ventilation unit, `10`–`15` = room modules.
-     - On the analysed installation, 10–15 followed the order of the central control panel: hall, bedroom, child 1–4.
+     - `2` = ventilation unit, `10`–`15` = room modules, probably secondary control units (NBE, "Neben-Bedienelement"; they report the name "Nbe").
+     - On the analysed installation, 10–15 followed the order of the central control unit (BDE): hall, bedroom, child 1–4.
    - **Mappings:** the defaults fit an FWT 2-R with BDE Comfort.
    - **Control** (optional): enable room setpoint writing and periodic parameter polling.
 
@@ -45,7 +45,7 @@ and read the parameters of all bus modules (read queries only).
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistics |
 | `<module>.<name>` | Named values according to the **mappings** table (a leading `/` creates the state below the instance root) |
 | `<module>.Register.<R/W>_<DP>` | Every register seen: `value` (auto-decoded), `raw` (hex), `lastSeen`, `count` |
-| `<room>.Heizelement_freigeben` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The BDE is not informed. The key lock (`0x0199`) cannot be switched this way: the master rewrites it about every 11 s |
+| `<room>.Heizelement_freigeben` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The central control unit (BDE) is not informed. The key lock (`0x0199`) cannot be switched this way: the central control unit rewrites it about every 11 s |
 | `<room>.Sollwert` | Only if writing is enabled: writable setpoint, sent once as SET `0x01FB` to the room module and acknowledged after the module reports it back |
 | `<module>.Meta.*` | Self-description of a module (name, DP list, type codes, access, units, error text) |
 | `<module>.Parameter.*` | Values of all registers of a module, read with *read parameters* |

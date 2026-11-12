@@ -97,7 +97,7 @@ interface WriteJob {
     sentAt: number;
 }
 
-/** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage der BDE) */
+/** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage des zentralen Bedienelements (BDE)) */
 const GAP_TRIGGER_DP = 0x02d9;
 const WRITE_TIMEOUT_MS = 30000;
 const WRITE_MAX_TRIES = 2;
@@ -876,7 +876,7 @@ class ProxonHesp extends utils.Adapter {
             job.sentAt = 0;
         }
         if (!job.sentAt && f.src === 2 && f.dp === GAP_TRIGGER_DP && this.sock) {
-            // Formate wie von der BDE gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
+            // Formate wie vom zentralen Bedienelement (BDE) gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
             const dp = job.kind === 'heater' ? 0x0196 : 0x01fb;
             const p = Buffer.alloc(job.kind === 'heater' ? 2 : 4);
             job.kind === 'heater' ? p.writeUInt16LE(job.value) : p.writeFloatLE(job.value);
