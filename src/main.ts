@@ -102,6 +102,8 @@ interface WriteJob {
     sentAt: number;
     /** clock: gesendete Uhrzeit (ms) */
     clockSent?: number;
+    /** frühester Sendezeitpunkt (ms): Schieberegler senden beim Ziehen Zwischenwerte, gesendet wird nur der letzte */
+    notBefore?: number;
 }
 
 /** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage des zentralen Bedienelements (BDE)) */
@@ -115,6 +117,8 @@ const WRITE_GAP_DP = 0x0194;
 const WRITE_MAX_TRIES = 10;
 /** Uhr stellen: Quittung kommt sofort, sonst in der nächsten passenden Lücke wiederholen */
 const CLOCK_TIMEOUT_MS = 2000;
+/** Wartezeit nach der letzten Sollwert-Änderung, bevor gesendet wird */
+const SETPOINT_SETTLE_MS = 2000;
 const QUERY_TIMEOUT_MS = 3000;
 /** Lese-Anfragen gehen oft verloren (nur ~40 % Treffer): die Lücke nach 0x02D9 ist nur ~70–80 ms lang */
 const QUERY_MAX_TRIES = 8;
@@ -861,7 +865,7 @@ class ProxonHesp extends utils.Adapter {
         }
         // einen evtl. noch wartenden Auftrag für dasselbe Modul ersetzen
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'setpoint' || j.mod !== mod || j.sentAt !== 0);
-        this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0 });
+        this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0, notBefore: Date.now() + SETPOINT_SETTLE_MS });
         this.log.info(`Sollwert-Auftrag ${rel} (Modul ${mod}) = ${value} °C eingereiht`);
     }
 
@@ -956,6 +960,15 @@ class ProxonHesp extends utils.Adapter {
     /** gibt true zurück, wenn in dieser Lücke gesendet wurde */
     private writeTick(f: Frame): boolean {
         const job = this.writeQueue[0];
+        if (!job.sentAt && job.notBefore && Date.now() < job.notBefore) {
+            // noch in der Wartezeit: einen bereits fälligen Auftrag dahinter vorziehen
+            const i = this.writeQueue.findIndex(j => !j.notBefore || Date.now() >= j.notBefore);
+            if (i > 0) {
+                this.writeQueue.unshift(...this.writeQueue.splice(i, 1));
+                return this.writeTick(f);
+            }
+            return false;
+        }
         const timeout = job.kind === 'clock' ? CLOCK_TIMEOUT_MS : WRITE_TIMEOUT_MS;
         if (job.tries >= WRITE_MAX_TRIES && !job.sentAt) {
             job.sentAt = Date.now() - timeout - 1;
