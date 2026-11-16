@@ -2,8 +2,9 @@
 
 *[Deutsche Version / German version](README.de.md)*
 
-Listens **passively** to the internal HESP bus of Proxon ventilation units (P series)
-through an RS485-to-TCP gateway and stores all values in ioBroker.
+Listens **passively** to the internal HESP bus of Proxon ventilation/heat-pump units (e.g. FWT 2-R)
+and stores all values in ioBroker. The bus is reached through an RS485-to-TCP gateway or directly
+through a serial RS485 interface (e.g. a USB-RS485 adapter).
 By default the adapter sends nothing on the bus. Optionally it can write room setpoints
 and read the parameters of all bus modules (read queries only).
 
@@ -12,23 +13,28 @@ and read the parameters of all bus modules (read queries only).
 
 ## Requirements
 
-- RS485-to-TCP gateway on the HESP bus (19200 baud, 8N1) in transparent TCP server mode
-  (e.g. port 502). Several TCP clients at the same time are fine as long as they only listen.
-  For *read parameters* and setpoint writing, preferably connect only the adapter:
+- Access to the HESP bus (19200 baud, 8N1), one of:
+  - **TCP client** (default): RS485-to-TCP gateway in transparent TCP server mode (e.g. port 502); the adapter connects to it.
+    Several TCP clients at the same time are fine as long as they only listen.
+  - **TCP server:** the gateway works as TCP client and connects to the adapter (port configurable).
+  - **Serial interface:** an RS485 interface on the ioBroker host, e.g. a USB-RS485 adapter (`/dev/ttyUSB0`,
+    better the stable name under `/dev/serial/by-id/`, or `COM3` on Windows).
+    Without gateway buffering, sending into the short bus gaps is probably more reliable (not yet tested on a real bus).
+- For *read parameters* and writing, preferably connect only the adapter to the gateway:
   the send gap on the bus is only about 70–80 ms, and every additional connection delays the gateway.
-- js-controller ≥ 6, Admin ≥ 7, Node.js ≥ 20.
+- js-controller ≥ 6, Admin ≥ 7.6.20, Node.js ≥ 22.
 
 ## Installation
 
-1. **Gateway:** connect an RS485-to-TCP gateway (tested: USR-TCP232 series) to the HESP bus lines (A/B) of the unit.
+1. **Bus access:** connect an RS485-to-TCP gateway (tested: USR-TCP232 series) or a USB-RS485 adapter to the HESP bus lines (A/B) of the unit.
    - Settings: 19200 baud, 8 data bits, no parity, 1 stop bit.
-   - Mode: TCP server, transparent (no Modbus conversion).
+   - Gateway mode: TCP server (or TCP client, see above), transparent (no Modbus conversion).
 2. **Adapter:** in Admin → *Adapters* click the GitHub icon (*Custom*), select *Custom URL* and enter the URL of the release package, e.g.
    `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.4.0/iobroker.proxon-hesp-0.4.0.tgz`.
    - Or on the console: `iob url <that URL>`.
    - Then create an instance.
 3. **Instance:**
-   - **Connection:** IP address and port of the gateway.
+   - **Connection:** data source (TCP client, TCP server or serial interface) and its settings.
    - **Modules:** map bus addresses to folder names.
      - `2` = ventilation unit, `10`–`15` = room modules, probably secondary control units (NBE, "Neben-Bedienelement"; they report the name "Nbe").
      - On the analysed installation, 10–15 followed the order of the central control unit (BDE): hall, bedroom, child 1–4.
@@ -89,7 +95,11 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### 0.4.1 (2026-11-09)
+### **WORK IN PROGRESS**
+
+- Data source selectable: TCP client (as before), TCP server (the gateway connects to the adapter) or a serial interface (e.g. USB-RS485)
+- Admin UI translated (English, German and further languages); news and description in all languages
+- Node.js ≥ 22 and Admin ≥ 7.6.20 required; standard ioBroker test and release workflow
 
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
 - Optional learning log: every value change and all unrecognised bytes in daily files
@@ -122,10 +132,12 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 - Optional writing of room setpoints
 
-### 0.1.x (2026-11-08)
+### 0.1.2 (2026-11-08)
 
 - First versions: passive listening, CRC check with resync, mappings, register store, meta data points, events, capture
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT License, see [LICENSE](LICENSE).
+
+Copyright (c) 2026 Martin <mkspam@kneppe.org>

@@ -2,17 +2,22 @@
 
 *[English version](README.md)*
 
-Liest den internen HESP-Bus von Proxon-Lüftungsanlagen (P-Serie) über ein
-RS485-TCP-Gateway **passiv** mit und legt alle Werte in ioBroker ab.
+Liest den internen HESP-Bus von Proxon-Lüftungsanlagen/Wärmepumpen (z. B. FWT 2-R) **passiv** mit und legt alle Werte in ioBroker ab.
+Der Bus wird über ein RS485-TCP-Gateway oder direkt über eine serielle RS485-Schnittstelle (z. B. USB-RS485-Adapter) erreicht.
 Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuerung**) können Raum-Sollwerte geschrieben werden.
 
 ## Voraussetzungen
 
-- RS485-TCP-Gateway am HESP-Bus (19200 Baud, 8N1), transparenter TCP-Server-Modus
-  (z. B. Port 502). Mehrere TCP-Clients gleichzeitig sind unkritisch, solange nur gelesen wird.
-  Für „Parameter lesen“ und das Schreiben von Sollwerten möglichst nur den Adapter verbinden:
+- Zugang zum HESP-Bus (19200 Baud, 8N1), wahlweise:
+  - **TCP-Client** (Standard): RS485-TCP-Gateway im transparenten TCP-Server-Modus (z. B. Port 502); der Adapter verbindet sich damit.
+    Mehrere TCP-Clients gleichzeitig sind unkritisch, solange nur gelesen wird.
+  - **TCP-Server:** Das Gateway arbeitet als TCP-Client und verbindet sich mit dem Adapter (Port einstellbar).
+  - **Serielle Schnittstelle:** eine RS485-Schnittstelle am ioBroker-Rechner, z. B. ein USB-RS485-Adapter (`/dev/ttyUSB0`,
+    besser der feste Name unter `/dev/serial/by-id/`, unter Windows z. B. `COM3`).
+    Ohne Puffer des Gateways trifft das Senden die kurzen Buslücken vermutlich zuverlässiger (an einem echten Bus noch nicht getestet).
+- Für „Parameter lesen“ und das Schreiben möglichst nur den Adapter mit dem Gateway verbinden:
   Die Sendelücke auf dem Bus ist nur etwa 70–80 ms lang, jede zusätzliche Verbindung verzögert das Gateway.
-- js-controller ≥ 6, Admin ≥ 7.
+- js-controller ≥ 6, Admin ≥ 7.6.20, Node.js ≥ 22.
 
 ## Installation
 
@@ -38,7 +43,7 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 
 ### 3. Instanz einrichten
 
-- **Verbindung:** IP-Adresse und Port des Gateways.
+- **Verbindung:** Datenquelle (TCP-Client, TCP-Server oder serielle Schnittstelle) und deren Einstellungen.
 - **Module:** Busadresse → Ordnername. Übliche Belegung:
   - `2` = Lüftungsgerät
   - `10`–`15` = Raummodule, vermutlich Neben-Bedienelemente (NBE; sie melden als Namen „Nbe“)
@@ -118,7 +123,11 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### 0.4.1 (2026-11-09)
+### Neu (noch nicht veröffentlicht)
+
+- Datenquelle wählbar: TCP-Client (wie bisher), TCP-Server (das Gateway verbindet sich mit dem Adapter) oder serielle Schnittstelle (z. B. USB-RS485)
+- Admin-Oberfläche übersetzt (Englisch, Deutsch und weitere Sprachen); Neuigkeiten und Beschreibung in allen Sprachen
+- Node.js ≥ 22 und Admin ≥ 7.6.20 erforderlich; Standard-Test- und Release-Ablauf von ioBroker
 
 - Adresse 30 als PTC-Modul erkannt (Name „PTC-Modul“); neue Datenpunkte Wärmepumpe angefordert/aktiv, Fühlerkorrektur je Raum
 - Optionales Lernprotokoll: jede Wertänderung und alle nicht erkannten Bytes in Tagesdateien
@@ -168,4 +177,6 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Lizenz
 
-MIT, siehe [LICENSE](LICENSE).
+MIT-Lizenz, siehe [LICENSE](LICENSE).
+
+Copyright (c) 2026 Martin <mkspam@kneppe.org>

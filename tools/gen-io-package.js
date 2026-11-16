@@ -10,6 +10,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
+// news, titleLang und desc (inkl. Übersetzungen) pflegen release-script und translate-adapter direkt in io-package.json
+const ioPath = path.join(__dirname, '..', 'io-package.json');
+const prev = fs.existsSync(ioPath) ? JSON.parse(fs.readFileSync(ioPath, 'utf8')).common || {} : {};
 
 const M = (module, kind, register, name, extra = {}) => ({
     module,
@@ -121,52 +124,11 @@ const io = {
     common: {
         name: 'proxon-hesp',
         version: pkg.version,
-        news: {
-            '0.4.1': {
-                en: 'Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the central control unit); read parameters: up to 8 tries, rejections (type 4) recognised, reconnect after 12 unanswered queries in a row; optional: enable/lock the room heater (SET 0x0196); optional: set the clock of the ventilation unit (SET 0x032E, system time + offset); setpoint writes use two bus gaps per cycle and up to 10 tries, sent 2 s after the last change',
-                de: 'Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom zentralen Bedienelement zyklisch geschrieben); Parameter lesen: bis zu 8 Versuche, Ablehnungen (Typ 4) werden erkannt, Neuverbindung nach 12 unbeantworteten Anfragen in Folge; optional: Heizelement je Raum freigeben/sperren (SET 0x0196); optional: Uhr des Lüftungsgeräts stellen (SET 0x032E, Systemzeit + Versatz); Sollwerte werden in zwei Buslücken je Zyklus mit bis zu 10 Versuchen gesendet, erst 2 s nach der letzten Änderung',
-            },
-            '0.4.0': {
-                en: 'Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each',
-                de: 'Parameter lesen für alle Module (Name, Verzeichnis, Werte); Knopf und Status (aktiv, Fortschritt) direkt unter der Instanz; Meta-Listen zu je einem Datenpunkt zusammengeführt',
-            },
-            '0.3.2': {
-                en: 'Parameter reading: more retries for directory pages, interruption reported as aborted',
-                de: 'Parameter lesen: mehr Wiederholungen für Verzeichnisseiten, Abbruch wird als „abgebrochen“ gemeldet',
-            },
-            '0.3.1': {
-                en: 'Setpoint step configurable (default 1 °C; room modules ignored 0.5 °C in tests)',
-                de: 'Sollwert-Schrittweite einstellbar (Standard 1 °C; Raummodule haben 0,5 °C im Test ignoriert)',
-            },
-            '0.3.0': {
-                en: 'Button "read parameters": reads the self-description and all parameters of the ventilation unit (read queries only); optional periodic polling (off by default)',
-                de: 'Knopf „Parameter lesen“: liest Selbstauskunft und alle Parameter des Lüftungsgeräts (nur Lese-Anfragen); optional regelmäßige Abfrage (standardmäßig aus)',
-            },
-            '0.2.1': {
-                en: 'Address 40 identified as air-quality sensor (humidity, CO2); length-prefixed meta texts decoded',
-                de: 'Adresse 40 als Luftqualitätssensor erkannt (Feuchte, CO2); Meta-Texte mit Längenbyte werden korrekt gelesen',
-            },
-            '0.2.0': {
-                en: 'Optional writing of room setpoints (SET 0x01FB), sent in a safe bus gap and confirmed by the room module',
-                de: 'Optional: Raum-Sollwerte schreiben (SET 0x01FB), gesendet in einer sicheren Buslücke und vom Raummodul bestätigt',
-            },
-            '0.1.2': {
-                en: 'Room module status (heat demand, heater enable, key lock), absolute mapping paths with leading "/"',
-                de: 'Raummodul-Status (Heizanforderung, Heizelement-Freigabe, Tastensperre), Zuordnungspfade ab Wurzel mit führendem "/"',
-            },
-            '0.1.1': {
-                en: 'Fix: floating-point values were sometimes misdetected as text',
-                de: 'Fehlerbehebung: Gleitkommawerte wurden teils fälschlich als Text erkannt',
-            },
-            '0.1.0': {
-                en: 'Initial version: passive listening on the Proxon HESP bus',
-                de: 'Erste Version: passives Mitlesen des Proxon-HESP-Busses',
-            },
-        },
-        titleLang: { en: 'Proxon HESP', de: 'Proxon HESP' },
-        desc: {
-            en: 'Passively reads the HESP bus of Proxon P-series ventilation units via an RS485-to-TCP gateway',
-            de: 'Liest den HESP-Bus von Proxon-Lüftungsanlagen (P-Serie) passiv über ein RS485-TCP-Gateway mit',
+        news: prev.news || {},
+        titleLang: prev.titleLang || { en: 'Proxon HESP', de: 'Proxon HESP' },
+        desc: prev.desc || {
+            en: 'Reads (and optionally writes) the HESP bus of Proxon ventilation/heat-pump units via an RS485 interface',
+            de: 'Liest (und schreibt optional) den HESP-Bus von Proxon-Lüftungsanlagen/Wärmepumpen über eine RS485-Schnittstelle',
         },
         authors: ['Martin <mkspam@kneppe.org>'],
         keywords: ['proxon', 'hesp', 'ventilation', 'lüftung', 'heat pump', 'rs485'],
@@ -186,10 +148,17 @@ const io = {
         dataSource: 'push',
         adminUI: { config: 'json' },
         dependencies: [{ 'js-controller': '>=6.0.11' }],
-        globalDependencies: [{ admin: '>=7.0.23' }],
+        globalDependencies: [{ admin: '>=7.6.20' }],
     },
     native: {
+        connType: 'tcp',
         host: '',
+        bind: '',
+        serialPath: '',
+        serialBaud: 19200,
+        serialDataBits: 8,
+        serialParity: 'none',
+        serialStopBits: 1,
         port: 502,
         watchdogSec: 120,
         refreshSec: 300,
@@ -235,5 +204,5 @@ const io = {
     ],
 };
 
-fs.writeFileSync(path.join(__dirname, '..', 'io-package.json'), `${JSON.stringify(io, null, 4)}\n`);
+fs.writeFileSync(ioPath, `${JSON.stringify(io, null, 4)}\n`);
 console.log(`io-package.json geschrieben, ${mappings.length} Standard-Zuordnungen`);

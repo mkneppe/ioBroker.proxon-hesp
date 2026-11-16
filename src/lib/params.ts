@@ -73,13 +73,16 @@ export const ROOM_PARAM_NAMES: Record<number, string> = {
     0x019a: 'Heizanforderung',
 };
 
-const plausibleFloat = (f: number): boolean => f === 0 || (Number.isFinite(f) && Math.abs(f) >= 1e-4 && Math.abs(f) < 1e7);
+const plausibleFloat = (f: number): boolean =>
+    f === 0 || (Number.isFinite(f) && Math.abs(f) >= 1e-4 && Math.abs(f) < 1e7);
 const round = (f: number): number => Math.round(f * 10000) / 10000;
 
 /**
  * Dekodiert die Antwort einer Lese-Anfrage heuristisch:
  * 1 Byte = uint8, 2 Byte = int16, 4 Byte = float32 (wenn plausibel) sonst int32 bzw. 2×uint16,
  * längere Antworten als JSON-Liste (float32, uint32 oder int16).
+ *
+ * @param b
  */
 export function decodeParam(b: Buffer): number | string {
     const n = b.length;
@@ -128,7 +131,11 @@ export function decodeParam(b: Buffer): number | string {
     return JSON.stringify(a);
 }
 
-/** "0x015F, 0x0228 ; 290" -> [0x015f, 0x0228, 290] */
+/**
+ * "0x015F, 0x0228 ; 290" -> [0x015f, 0x0228, 290]
+ *
+ * @param s
+ */
 export function parseDpList(s: string): number[] {
     return String(s || '')
         .split(/[,;\s]+/)

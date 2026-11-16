@@ -4,17 +4,7 @@
  */
 
 export type ValueType =
-    | 'auto'
-    | 'float32'
-    | 'int32'
-    | 'uint32'
-    | 'int16'
-    | 'uint16'
-    | 'uint8'
-    | 'text'
-    | 'calendar'
-    | 'clock'
-    | 'fanlevel';
+    'auto' | 'float32' | 'int32' | 'uint32' | 'int16' | 'uint16' | 'uint8' | 'text' | 'calendar' | 'clock' | 'fanlevel';
 
 /**
  * Vollständige Statuswörter von DP 0x0208, die per Anzeigevergleich einer Lüfterstufe
@@ -38,7 +28,11 @@ const CONTROLLER_FAN_LEVELS: Record<number, number> = {
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
-/** DP 0x032E: gepacktes lokales Datum/Uhrzeit (Minutenauflösung) -> "JJJJ-MM-TTTHH:MM" */
+/**
+ * DP 0x032E: gepacktes lokales Datum/Uhrzeit (Minutenauflösung) -> "JJJJ-MM-TTTHH:MM"
+ *
+ * @param p
+ */
 export function decodeCalendar(p: Buffer): string | null {
     if (p.length !== 4) {
         return null;
@@ -66,7 +60,11 @@ export function decodeCalendar(p: Buffer): string | null {
     return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
 }
 
-/** Gegenstück zu decodeCalendar: lokale Zeit (Minutenauflösung) -> uint32 für SET 0x032E */
+/**
+ * Gegenstück zu decodeCalendar: lokale Zeit (Minutenauflösung) -> uint32 für SET 0x032E
+ *
+ * @param d
+ */
 export function encodeCalendar(d: Date): number {
     return (
         (d.getMinutes() |
@@ -79,7 +77,11 @@ export function encodeCalendar(d: Date): number {
     );
 }
 
-/** DP 0x0330: gepackte lokale Uhrzeit -> "HH:MM:SS" */
+/**
+ * DP 0x0330: gepackte lokale Uhrzeit -> "HH:MM:SS"
+ *
+ * @param p
+ */
 export function decodeClock(p: Buffer): string | null {
     if (p.length !== 4) {
         return null;
@@ -105,7 +107,11 @@ export interface Decoded {
 
 const round = (v: number, d = 3): number => Math.round(v * 10 ** d) / 10 ** d;
 
-/** Plausibler float32 (keine Denormalen, keine Riesenwerte) */
+/**
+ * Plausibler float32 (keine Denormalen, keine Riesenwerte)
+ *
+ * @param v
+ */
 export function plausibleFloat(v: number): boolean {
     if (!Number.isFinite(v)) {
         return false;
@@ -117,7 +123,11 @@ export function plausibleFloat(v: number): boolean {
     return a >= 1e-3 && a <= 1e6;
 }
 
-/** Text: mindestens 3 druckbare Zeichen, optional mit Null-Bytes aufgefüllt */
+/**
+ * Text: mindestens 3 druckbare Zeichen, optional mit Null-Bytes aufgefüllt
+ *
+ * @param p
+ */
 export function asText(p: Buffer): string | null {
     let end = p.length;
     while (end > 0 && p[end - 1] === 0) {
@@ -174,7 +184,13 @@ export function typeSize(type: ValueType): number {
     }
 }
 
-/** Ein Element bestimmter Größe deuten: 4 Byte -> float32 falls plausibel, sonst int32 */
+/**
+ * Ein Element bestimmter Größe deuten: 4 Byte -> float32 falls plausibel, sonst int32
+ *
+ * @param p
+ * @param off
+ * @param size
+ */
 function autoElem(p: Buffer, off: number, size: number): number {
     if (size === 4) {
         const f = p.readFloatLE(off);
@@ -231,10 +247,20 @@ export function autoDecode(p: Buffer, count = 0): Decoded {
     return { kind: 'list', value: JSON.stringify(items), items, elemSize: size };
 }
 
-/** Wert gemäß Zuordnung lesen (Index in Elementen des Typs) */
+/**
+ * Wert gemäß Zuordnung lesen (Index in Elementen des Typs)
+ *
+ * @param p
+ * @param type
+ * @param index
+ * @param count
+ */
 export function decodeAs(p: Buffer, type: ValueType, index = 0, count = 0): string | number | null {
     if (type === 'text') {
-        return p.toString('latin1').replace(/\0[\s\S]*$/, '').trim();
+        return p
+            .toString('latin1')
+            .replace(/\0[\s\S]*$/, '')
+            .trim();
     }
     if (type === 'calendar') {
         return decodeCalendar(p);

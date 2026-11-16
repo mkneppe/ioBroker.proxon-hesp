@@ -87,7 +87,14 @@ export function buildFrame(
     return f;
 }
 
-/** Lese-Anfrage; count = Anzahl Elemente */
+/**
+ * Lese-Anfrage; count = Anzahl Elemente
+ *
+ * @param src
+ * @param dst
+ * @param id
+ * @param count
+ */
 export function buildQuery(src: number, dst: number, id: number, count = 1): Buffer {
     const p = Buffer.alloc(2);
     p.writeUInt16LE(count);

@@ -1,56 +1,125 @@
 {
     "common": {
         "name": "proxon-hesp",
-        "version": "0.4.1",
+        "version": "0.4.0",
         "news": {
-            "0.4.1": {
-                "en": "Address 30 identified as PTC module; new states: heat pump requested/active (0x0208), room sensor correction (0x01F8, written cyclically by the central control unit); read parameters: up to 8 tries, rejections (type 4) recognised, reconnect after 12 unanswered queries in a row; optional: enable/lock the room heater (SET 0x0196); optional: set the clock of the ventilation unit (SET 0x032E, system time + offset); setpoint writes use two bus gaps per cycle and up to 10 tries, sent 2 s after the last change",
-                "de": "Adresse 30 als PTC-Modul erkannt; neue Datenpunkte: Wärmepumpe angefordert/aktiv (0x0208), Fühlerkorrektur je Raum (0x01F8, vom zentralen Bedienelement zyklisch geschrieben); Parameter lesen: bis zu 8 Versuche, Ablehnungen (Typ 4) werden erkannt, Neuverbindung nach 12 unbeantworteten Anfragen in Folge; optional: Heizelement je Raum freigeben/sperren (SET 0x0196); optional: Uhr des Lüftungsgeräts stellen (SET 0x032E, Systemzeit + Versatz); Sollwerte werden in zwei Buslücken je Zyklus mit bis zu 10 Versuchen gesendet, erst 2 s nach der letzten Änderung"
-            },
             "0.4.0": {
                 "en": "Parameter reading covers all modules (name, directory, values); button and status (active, progress) directly under the instance; meta lists merged into one state each",
-                "de": "Parameter lesen für alle Module (Name, Verzeichnis, Werte); Knopf und Status (aktiv, Fortschritt) direkt unter der Instanz; Meta-Listen zu je einem Datenpunkt zusammengeführt"
+                "de": "Parameter lesen für alle Module (Name, Verzeichnis, Werte); Knopf und Status (aktiv, Fortschritt) direkt unter der Instanz; Meta-Listen zu je einem Datenpunkt zusammengeführt",
+                "ru": "Чтение параметров охватывает все модули (имя, каталог, значения); кнопка и статус (активен, прогресс) непосредственно под экземпляром; мета-списки объединены в одно состояние каждый",
+                "pt": "A leitura dos parâmetros abrange todos os módulos (nome, diretório, valores); botão e status (ativo, progresso) diretamente abaixo da instância; meta listas mescladas em um estado cada",
+                "nl": "Het lezen van parameters omvat alle modules (naam, map, waarden); knop en status (actief, voortgang) direct onder de instance; metalijsten samengevoegd tot elk één staat",
+                "fr": "La lecture des paramètres couvre tous les modules (nom, répertoire, valeurs) ; bouton et statut (actif, progression) directement sous l'instance ; méta-listes fusionnées en un seul état chacune",
+                "it": "La lettura dei parametri copre tutti i moduli (nome, directory, valori); pulsante e stato (attivo, avanzamento) direttamente sotto l'istanza; meta elenchi uniti in uno stato ciascuno",
+                "es": "La lectura de parámetros cubre todos los módulos (nombre, directorio, valores); botón y estado (activo, progreso) directamente debajo de la instancia; meta listas fusionadas en un estado cada una",
+                "pl": "Odczyt parametrów obejmuje wszystkie moduły (nazwa, katalog, wartości); przycisk i status (aktywny, postęp) bezpośrednio pod instancją; metalisty zostały połączone w jeden stan",
+                "uk": "Зчитування параметрів охоплює всі модулі (ім'я, каталог, значення); кнопка і статус (активний, прогрес) безпосередньо під екземпляром; мета-списки об’єднані в один стан кожен",
+                "zh-cn": "参数读取覆盖所有模块（名称、目录、值）；实例正下方的按钮和状态（活动、进度）；元列表各自合并为一种状态"
             },
             "0.3.2": {
                 "en": "Parameter reading: more retries for directory pages, interruption reported as aborted",
-                "de": "Parameter lesen: mehr Wiederholungen für Verzeichnisseiten, Abbruch wird als „abgebrochen“ gemeldet"
+                "de": "Parameter lesen: mehr Wiederholungen für Verzeichnisseiten, Abbruch wird als „abgebrochen“ gemeldet",
+                "ru": "Чтение параметров: больше повторов для страниц каталога, прерывание сообщается как прерванное",
+                "pt": "Leitura de parâmetros: mais tentativas para páginas de diretório, interrupção reportada como abortada",
+                "nl": "Parameterlezen: meer pogingen voor directorypagina's, onderbreking gerapporteerd als afgebroken",
+                "fr": "Lecture des paramètres : plus de tentatives pour les pages de l'annuaire, interruption signalée comme interrompue",
+                "it": "Lettura parametri: più tentativi per le pagine della directory, interruzione segnalata come abortita",
+                "es": "Lectura de parámetros: más reintentos para páginas de directorio, interrupción reportada como abortada",
+                "pl": "Odczyt parametrów: więcej prób dla stron katalogu, przerwa zgłoszona jako przerwana",
+                "uk": "Зчитування параметрів: більше спроб для сторінок каталогу, переривання повідомлено як перерване",
+                "zh-cn": "参数读取：目录页面更多重试，中断报告为中止"
             },
             "0.3.1": {
                 "en": "Setpoint step configurable (default 1 °C; room modules ignored 0.5 °C in tests)",
-                "de": "Sollwert-Schrittweite einstellbar (Standard 1 °C; Raummodule haben 0,5 °C im Test ignoriert)"
+                "de": "Sollwert-Schrittweite einstellbar (Standard 1 °C; Raummodule haben 0,5 °C im Test ignoriert)",
+                "ru": "Настраиваемый шаг уставки (по умолчанию 1 °C; комнатные модули игнорируют 0,5 °C при тестировании)",
+                "pt": "Etapa do ponto de ajuste configurável (padrão 1 °C; módulos de ambiente ignorados 0,5 °C em testes)",
+                "nl": "Instelpuntstap configureerbaar (standaard 1 °C; kamermodules genegeerd 0,5 °C in tests)",
+                "fr": "Pas de consigne configurable (par défaut 1 °C ; modules de pièce ignorés 0,5 °C dans les tests)",
+                "it": "Gradino del setpoint configurabile (predefinito 1 °C; moduli ambiente ignorati 0,5 °C nei test)",
+                "es": "Paso de punto de ajuste configurable (predeterminado 1 °C; los módulos de habitación ignoraron 0,5 °C en las pruebas)",
+                "pl": "Konfigurowalny krok wartości zadanej (domyślnie 1°C; moduły pokojowe ignorowały w testach 0,5°C)",
+                "uk": "Крок заданого значення налаштовується (за замовчуванням 1 °C; кімнатні модулі ігноруються 0,5 °C під час тестів)",
+                "zh-cn": "设定点步长可配置（默认 1 °C；房间模块在测试中忽略 0.5 °C）"
             },
             "0.3.0": {
                 "en": "Button \"read parameters\": reads the self-description and all parameters of the ventilation unit (read queries only); optional periodic polling (off by default)",
-                "de": "Knopf „Parameter lesen“: liest Selbstauskunft und alle Parameter des Lüftungsgeräts (nur Lese-Anfragen); optional regelmäßige Abfrage (standardmäßig aus)"
+                "de": "Knopf „Parameter lesen“: liest Selbstauskunft und alle Parameter des Lüftungsgeräts (nur Lese-Anfragen); optional regelmäßige Abfrage (standardmäßig aus)",
+                "ru": "Кнопка «прочитать параметры»: считывает самоописание и все параметры вентиляционной установки (только запросы на чтение); дополнительный периодический опрос (по умолчанию отключен)",
+                "pt": "Botão “ler parâmetros”: lê a autodescrição e todos os parâmetros da unidade de ventilação (somente leitura de consultas); pesquisa periódica opcional (desativada por padrão)",
+                "nl": "Knop \"parameters lezen\": leest de zelfbeschrijving en alle parameters van de ventilatie-unit (alleen leesquery's); optioneel periodiek pollen (standaard uitgeschakeld)",
+                "fr": "Bouton « lire les paramètres » : lit l'auto-description et tous les paramètres de l'unité de ventilation (requêtes de lecture uniquement) ; interrogation périodique facultative (désactivée par défaut)",
+                "it": "Pulsante \"leggi parametri\": legge l'autodescrizione e tutti i parametri dell'unità di ventilazione (solo domande di lettura); polling periodico opzionale (disattivato per impostazione predefinita)",
+                "es": "Botón \"leer parámetros\": lee la autodescripción y todos los parámetros de la unidad de ventilación (solo lectura de consultas); sondeo periódico opcional (desactivado de forma predeterminada)",
+                "pl": "Przycisk „czytaj parametry”: odczytuje opis własny oraz wszystkie parametry centrali wentylacyjnej (tylko odczyt zapytań); opcjonalne okresowe odpytywanie (domyślnie wyłączone)",
+                "uk": "Кнопка «читати параметри»: читає самоопис і всі параметри вентиляційної установки (тільки читання запитів); додаткове періодичне опитування (за замовчуванням вимкнено)",
+                "zh-cn": "“读取参数”按钮：读取通风机的自我描述和所有参数（仅读取查询）；可选的定期轮询（默认关闭）"
             },
             "0.2.1": {
                 "en": "Address 40 identified as air-quality sensor (humidity, CO2); length-prefixed meta texts decoded",
-                "de": "Adresse 40 als Luftqualitätssensor erkannt (Feuchte, CO2); Meta-Texte mit Längenbyte werden korrekt gelesen"
+                "de": "Adresse 40 als Luftqualitätssensor erkannt (Feuchte, CO2); Meta-Texte mit Längenbyte werden korrekt gelesen",
+                "ru": "Адрес 40 определен как датчик качества воздуха (влажность, CO2); декодированы метатексты с префиксом длины",
+                "pt": "Endereço 40 identificado como sensor de qualidade do ar (umidade, CO2); metatextos com prefixo de comprimento decodificados",
+                "nl": "Adres 40 geïdentificeerd als luchtkwaliteitsensor (vochtigheid, CO2); metateksten met lengte-voorvoegsel gedecodeerd",
+                "fr": "Adresse 40 identifiée comme capteur de qualité de l'air (humidité, CO2) ; Métatextes avec préfixe de longueur décodés",
+                "it": "Indirizzo 40 identificato come sensore di qualità dell'aria (umidità, CO2); metatesti con prefisso di lunghezza decodificati",
+                "es": "Dirección 40 identificada como sensor de calidad del aire (humedad, CO2); metatextos con prefijo de longitud decodificados",
+                "pl": "Adres 40 zidentyfikowany jako czujnik jakości powietrza (wilgotność, CO2); dekodowane metateksty z prefiksem długości",
+                "uk": "Адреса 40 ідентифікується як датчик якості повітря (вологість, CO2); декодовані метатексти з префіксом довжини",
+                "zh-cn": "地址40识别为空气质量传感器（湿度、CO2）；解码的长度前缀元文本"
             },
             "0.2.0": {
                 "en": "Optional writing of room setpoints (SET 0x01FB), sent in a safe bus gap and confirmed by the room module",
-                "de": "Optional: Raum-Sollwerte schreiben (SET 0x01FB), gesendet in einer sicheren Buslücke und vom Raummodul bestätigt"
+                "de": "Optional: Raum-Sollwerte schreiben (SET 0x01FB), gesendet in einer sicheren Buslücke und vom Raummodul bestätigt",
+                "ru": "Опциональная запись комнатных уставок (SET 0x01FB), отправленных в безопасный разрыв шины и подтвержденных комнатным модулем",
+                "pt": "Escrita opcional de setpoints da sala (SET 0x01FB), enviada em um gap seguro do barramento e confirmada pelo módulo da sala",
+                "nl": "Optioneel schrijven van kamerinstelpunten (SET 0x01FB), verzonden in een veilige busopening en bevestigd door de kamermodule",
+                "fr": "Écriture facultative des consignes d'ambiance (SET 0x01FB), envoyées dans un espace de bus sécurisé et confirmées par le module d'ambiance",
+                "it": "Scrittura opzionale dei setpoint ambiente (SET 0x01FB), inviati in un intervallo bus sicuro e confermati dal modulo ambiente",
+                "es": "Escritura opcional de consignas de ambiente (SET 0x01FB), enviada en un hueco de bus seguro y confirmada por el módulo de ambiente",
+                "pl": "Opcjonalny zapis nastaw pokojowych (SET 0x01FB), przesyłanych bezpieczną magistralą i potwierdzanych przez moduł pokojowy",
+                "uk": "Додатковий запис контрольних значень кімнати (SET 0x01FB), які надсилаються через безпечний розрив шини та підтверджуються кімнатним модулем",
+                "zh-cn": "可选择写入房间设定值 (SET 0x01FB)，在安全总线间隙中发送并由房间模块确认"
             },
             "0.1.2": {
                 "en": "Room module status (heat demand, heater enable, key lock), absolute mapping paths with leading \"/\"",
-                "de": "Raummodul-Status (Heizanforderung, Heizelement-Freigabe, Tastensperre), Zuordnungspfade ab Wurzel mit führendem \"/\""
-            },
-            "0.1.1": {
-                "en": "Fix: floating-point values were sometimes misdetected as text",
-                "de": "Fehlerbehebung: Gleitkommawerte wurden teils fälschlich als Text erkannt"
-            },
-            "0.1.0": {
-                "en": "Initial version: passive listening on the Proxon HESP bus",
-                "de": "Erste Version: passives Mitlesen des Proxon-HESP-Busses"
+                "de": "Raummodul-Status (Heizanforderung, Heizelement-Freigabe, Tastensperre), Zuordnungspfade ab Wurzel mit führendem \"/\"",
+                "ru": "Статус комнатного модуля (потребность в тепле, включение обогревателя, блокировка кнопок), абсолютные пути отображения с начальным знаком «/».",
+                "pt": "Status do módulo da sala (demanda de calor, ativação do aquecedor, bloqueio de teclas), caminhos de mapeamento absolutos com \"/\" inicial",
+                "nl": "Status van kamermodule (warmtevraag, verwarming inschakelen, toetsenblokkering), absolute mappingpaden met voorafgaande \"/\"",
+                "fr": "État du module de pièce (demande de chaleur, activation du chauffage, verrouillage des touches), chemins de cartographie absolus avec \"/\" en tête",
+                "it": "Stato del modulo ambiente (richiesta di calore, abilitazione riscaldatore, blocco tasti), percorsi di mappatura assoluti con \"/\" iniziale",
+                "es": "Estado del módulo de habitación (demanda de calor, habilitación del calentador, bloqueo de teclas), rutas de mapeo absoluto con \"/\" inicial",
+                "pl": "Stan modułu pokojowego (zapotrzebowanie na ciepło, włączenie grzejnika, blokada klawiszy), ścieżki mapowania bezwzględnego z wiodącym „/”",
+                "uk": "Статус кімнатного модуля (потреба в теплі, увімкнення обігрівача, блокування клавіш), абсолютні шляхи відображення з \"/\" на початку",
+                "zh-cn": "房间模块状态（热量需求、加热器启用、钥匙锁）、带前导“/”的绝对映射路径"
             }
         },
         "titleLang": {
             "en": "Proxon HESP",
-            "de": "Proxon HESP"
+            "de": "Proxon HESP",
+            "ru": "Проксон HESP",
+            "pt": "Proxon HESP",
+            "nl": "Proxon HESP",
+            "fr": "Proxon HESP",
+            "it": "Proxon HESP",
+            "es": "Proxón HESP",
+            "pl": "Proxon HESP",
+            "uk": "Проксон HESP",
+            "zh-cn": "Proxon HESP"
         },
         "desc": {
-            "en": "Passively reads the HESP bus of Proxon P-series ventilation units via an RS485-to-TCP gateway",
-            "de": "Liest den HESP-Bus von Proxon-Lüftungsanlagen (P-Serie) passiv über ein RS485-TCP-Gateway mit"
+            "en": "Reads (and optionally writes) the HESP bus of Proxon ventilation/heat-pump units via an RS485 interface",
+            "de": "Liest (und schreibt optional) den HESP-Bus von Proxon-Lüftungsanlagen/Wärmepumpen über eine RS485-Schnittstelle",
+            "ru": "Считывает (и опционально записывает) шину HESP вентиляционных/тепловых насосов Proxon через интерфейс RS485.",
+            "pt": "Lê (e opcionalmente escreve) o barramento HESP das unidades de ventilação/bomba de calor Proxon através de uma interface RS485",
+            "nl": "Leest (en optioneel schrijft) de HESP-bus van Proxon ventilatie-/warmtepompunits via een RS485-interface",
+            "fr": "Lit (et écrit en option) le bus HESP des unités de ventilation/pompe à chaleur Proxon via une interface RS485",
+            "it": "Legge (e facoltativamente scrive) il bus HESP delle unità di ventilazione/pompa di calore Proxon tramite interfaccia RS485",
+            "es": "Lee (y opcionalmente escribe) el bus HESP de las unidades de ventilación/bomba de calor Proxon a través de una interfaz RS485",
+            "pl": "Odczytuje (i opcjonalnie zapisuje) magistralę HESP urządzeń wentylacyjnych/pomp ciepła Proxon poprzez interfejs RS485",
+            "uk": "Зчитує (і додатково записує) шину HESP вентиляційних/теплових насосів Proxon через інтерфейс RS485",
+            "zh-cn": "通过 RS485 接口读取（并可选择写入）Proxon 通风/热泵装置的 HESP 总线"
         },
         "authors": [
             "Martin <mkspam@kneppe.org>"
@@ -90,12 +159,19 @@
         ],
         "globalDependencies": [
             {
-                "admin": ">=7.0.23"
+                "admin": ">=7.6.20"
             }
         ]
     },
     "native": {
+        "connType": "tcp",
         "host": "",
+        "bind": "",
+        "serialPath": "",
+        "serialBaud": 19200,
+        "serialDataBits": 8,
+        "serialParity": "none",
+        "serialStopBits": 1,
         "port": 502,
         "watchdogSec": 120,
         "refreshSec": 300,

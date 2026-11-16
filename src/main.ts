@@ -4,10 +4,10 @@
  */
 import * as utils from '@iobroker/adapter-core';
 import * as fs from 'node:fs';
-import * as net from 'node:net';
 import * as path from 'node:path';
 import { autoDecode, decodeAs, decodeCalendar, decodeClock, encodeCalendar, type ValueType } from './lib/decode';
 import { buildFrame, buildQuery, type Frame, FrameParser, FrameType, toHex } from './lib/hesp';
+import { type ConnType, createTransport, listSerialPorts, type Transport } from './lib/transport';
 import { decodeParam, PARAM_ACCESS, PARAM_NAMES, PARAM_UNITS, parseDpList, ROOM_PARAM_NAMES } from './lib/params';
 
 interface ModuleCfg {
@@ -39,7 +39,16 @@ interface MappingCfg {
 const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
 
 interface Config {
+    /** Datenquelle: TCP-Client zum Gateway, TCP-Server (Gateway verbindet sich) oder serielle Schnittstelle */
+    connType: ConnType;
     host: string;
+    /** TCP-Server: lokale Adresse (leer = alle) */
+    bind: string;
+    serialPath: string;
+    serialBaud: number;
+    serialDataBits: 5 | 6 | 7 | 8;
+    serialParity: 'none' | 'even' | 'odd';
+    serialStopBits: 1 | 2;
     port: number;
     watchdogSec: number;
     refreshSec: number;
@@ -109,8 +118,10 @@ interface WriteJob {
 /** DP, nach dessen Antwort (von Adresse 2) eine kurze Buslücke folgt (~70–80 ms bis zur nächsten Anfrage des zentralen Bedienelements (BDE)) */
 const GAP_TRIGGER_DP = 0x02d9;
 const WRITE_TIMEOUT_MS = 22000;
-/** Schreiben bevorzugt in der längeren Lücke nach der Antwort des Luftqualitätsmoduls (40>1 0x0194: gemessen min. 88 ms, meist ~100 ms;
- *  nach 0x02D9 nur 65–72 ms, dort kollidierten Schreibbefehle mit der nächsten Anfrage der BDE) */
+/**
+ * Schreiben bevorzugt in der längeren Lücke nach der Antwort des Luftqualitätsmoduls (40>1 0x0194: gemessen min. 88 ms, meist ~100 ms;
+ *  nach 0x02D9 nur 65–72 ms, dort kollidierten Schreibbefehle mit der nächsten Anfrage der BDE)
+ */
 const WRITE_GAP_SRC = 40;
 const WRITE_GAP_DP = 0x0194;
 /** Schreibbefehle kollidieren oft mit der BDE (Lücke nur ~70 ms, TCP-Laufzeit schwankt) – mehrere Versuche */
@@ -151,7 +162,7 @@ const STARTUP_GRACE_MS = 3 * 60 * 1000;
 
 class ProxonHesp extends utils.Adapter {
     private cfg!: Config;
-    private sock: net.Socket | null = null;
+    private sock: Transport | null = null;
     private parser = new FrameParser();
     private reconnectTimer: ioBroker.Timeout | undefined;
     private backoffMs = 1000;
@@ -203,6 +214,13 @@ class ProxonHesp extends utils.Adapter {
     private async onReady(): Promise<void> {
         this.cfg = this.config as unknown as Config;
         this.cfg.port = Number(this.cfg.port) || 502;
+        this.cfg.connType = (['tcp', 'tcpserver', 'serial'] as ConnType[]).includes(this.cfg.connType)
+            ? this.cfg.connType
+            : 'tcp';
+        this.cfg.serialBaud = Number(this.cfg.serialBaud) || 19200;
+        this.cfg.serialDataBits = ([5, 6, 7, 8] as const).find(b => b === Number(this.cfg.serialDataBits)) ?? 8;
+        this.cfg.serialStopBits = Number(this.cfg.serialStopBits) === 2 ? 2 : 1;
+        this.cfg.serialParity = (['none', 'even', 'odd'] as const).find(p => p === this.cfg.serialParity) ?? 'none';
         this.cfg.watchdogSec = Number(this.cfg.watchdogSec) || 120;
         this.cfg.refreshSec = Number(this.cfg.refreshSec) || 300;
         this.cfg.captureMinutes = Number(this.cfg.captureMinutes) || 15;
@@ -216,8 +234,12 @@ class ProxonHesp extends utils.Adapter {
         }
 
         await this.setState('info.connection', false, true);
-        if (!this.cfg.host) {
+        if (this.cfg.connType === 'tcp' && !this.cfg.host) {
             this.log.error('Kein Gateway (Host) konfiguriert');
+            return;
+        }
+        if (this.cfg.connType === 'serial' && !this.cfg.serialPath) {
+            this.log.error('Keine serielle Schnittstelle konfiguriert');
             return;
         }
 
@@ -237,7 +259,8 @@ class ProxonHesp extends utils.Adapter {
                 module: Number(m.module),
                 register: Number(m.register),
                 index: Number(m.index) || 0,
-                factor: m.factor === undefined || m.factor === null || (m.factor as unknown) === '' ? 1 : Number(m.factor),
+                factor:
+                    m.factor === undefined || m.factor === null || (m.factor as unknown) === '' ? 1 : Number(m.factor),
                 type: m.type || 'auto',
             });
             this.mappings.set(key, list);
@@ -292,10 +315,14 @@ class ProxonHesp extends utils.Adapter {
                     },
                 });
                 // Schrittweite auch bei bestehenden Objekten aktualisieren
-                await this.extendObjectAsync(`${this.moduleFolder(mod)}.Sollwert`, { common: { step: this.cfg.writeStep } });
+                await this.extendObjectAsync(`${this.moduleFolder(mod)}.Sollwert`, {
+                    common: { step: this.cfg.writeStep },
+                });
                 this.subscribeStates(`${this.moduleFolder(mod)}.Sollwert`);
             }
-            this.log.info(`Schreiben aktiv für Raummodule ${[...this.controlMods].join(', ')} (${this.cfg.writeMin}–${this.cfg.writeMax} °C, Schritt ${this.cfg.writeStep} °C)`);
+            this.log.info(
+                `Schreiben aktiv für Raummodule ${[...this.controlMods].join(', ')} (${this.cfg.writeMin}–${this.cfg.writeMax} °C, Schritt ${this.cfg.writeStep} °C)`,
+            );
             if (this.cfg.allowHeaterWrite) {
                 for (const mod of this.controlMods) {
                     this.heaterMods.add(mod);
@@ -369,21 +396,30 @@ class ProxonHesp extends utils.Adapter {
     private connect(): void {
         this.shutdownSocket();
         this.parser.reset();
-        const sock = net.createConnection({ host: this.cfg.host, port: this.cfg.port });
-        this.sock = sock;
-        sock.setTimeout(60000);
-        // Anfragen müssen in der kurzen Buslücke ankommen -> kein Nagle-Puffer
-        sock.setNoDelay(true);
-        sock.on('connect', () => {
-            this.log.info(`Verbunden mit ${this.cfg.host}:${this.cfg.port}`);
-            sock.setKeepAlive(true, 15000);
+        const c = this.cfg;
+        const t = createTransport({
+            type: c.connType,
+            host: c.host,
+            port: c.port,
+            bind: c.bind,
+            serialPath: c.serialPath,
+            baudRate: c.serialBaud,
+            dataBits: c.serialDataBits,
+            parity: c.serialParity,
+            stopBits: c.serialStopBits,
+            idleTimeoutMs: 60000,
+        });
+        this.sock = t;
+        t.on('open', (msg: string) => {
+            this.log.info(msg);
             this.backoffMs = 1000;
             this.lastValid = Date.now();
         });
-        sock.on('data', chunk => this.onData(chunk));
-        sock.on('timeout', () => this.lost('Timeout, keine Daten'));
-        sock.on('error', err => this.lost(err.message));
-        sock.on('close', () => this.lost('Verbindung geschlossen'));
+        t.on('info', (msg: string) => this.log.info(msg));
+        // TCP-Server: Gateway weg, Server wartet weiter
+        t.on('down', () => this.setConnected(false));
+        t.on('data', (chunk: Buffer) => this.onData(chunk));
+        t.on('lost', (reason: string) => this.lost(reason));
     }
 
     private shutdownSocket(): void {
@@ -391,8 +427,7 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
         this.sock.removeAllListeners();
-        this.sock.on('error', () => undefined);
-        this.sock.destroy();
+        this.sock.close();
         this.sock = null;
     }
 
@@ -508,14 +543,33 @@ class ProxonHesp extends utils.Adapter {
             }
             case FrameType.Confirm: {
                 const wj = this.writeQueue[0];
-                if (wj && wj.kind === 'clock' && wj.sentAt && Date.now() - wj.sentAt < 1500 && f.src === UNIT_ADDR && f.dst === 1 && f.dp === 0x032e) {
+                if (
+                    wj &&
+                    wj.kind === 'clock' &&
+                    wj.sentAt &&
+                    Date.now() - wj.sentAt < 1500 &&
+                    f.src === UNIT_ADDR &&
+                    f.dst === 1 &&
+                    f.dp === 0x032e
+                ) {
                     this.writeQueue.shift();
-                    this.log.info(`Uhr des Lüftungsgeräts gestellt (${this.clockLabel(wj)}, quittiert nach ${Date.now() - wj.sentAt} ms)`);
+                    this.log.info(
+                        `Uhr des Lüftungsgeräts gestellt (${this.clockLabel(wj)}, quittiert nach ${Date.now() - wj.sentAt} ms)`,
+                    );
                     return;
                 }
                 // nur Quittungen kurz nach unserem Senden zählen (die BDE schreibt 0x0199 selbst alle ~11 s)
-                if (wj && wj.sentAt && Date.now() - wj.sentAt < 300 && f.src === wj.mod && f.dst === 1 && [0x0199, 0x01fb, 0x0196].includes(f.dp)) {
-                    this.log.debug(`Modul ${this.moduleFolder(wj.mod)} quittiert SET 0x${f.dp.toString(16).padStart(4, '0')} (${Date.now() - wj.sentAt} ms)`);
+                if (
+                    wj &&
+                    wj.sentAt &&
+                    Date.now() - wj.sentAt < 300 &&
+                    f.src === wj.mod &&
+                    f.dst === 1 &&
+                    [0x0199, 0x01fb, 0x0196].includes(f.dp)
+                ) {
+                    this.log.debug(
+                        `Modul ${this.moduleFolder(wj.mod)} quittiert SET 0x${f.dp.toString(16).padStart(4, '0')} (${Date.now() - wj.sentAt} ms)`,
+                    );
                 }
                 return;
             }
@@ -581,9 +635,20 @@ class ProxonHesp extends utils.Adapter {
                     states,
                     read: true,
                     write: false,
-                    custom: m.history && this.cfg.historyInstance
-                        ? { [this.cfg.historyInstance]: { enabled: true, changesOnly: true, changesMinDelta: 0.05, debounce: 0, retention: 0, maxLength: 0, blockTime: 0 } }
-                        : undefined,
+                    custom:
+                        m.history && this.cfg.historyInstance
+                            ? {
+                                  [this.cfg.historyInstance]: {
+                                      enabled: true,
+                                      changesOnly: true,
+                                      changesMinDelta: 0.05,
+                                      debounce: 0,
+                                      retention: 0,
+                                      maxLength: 0,
+                                      blockTime: 0,
+                                  },
+                              }
+                            : undefined,
                 },
             });
             await this.write(id, v);
@@ -627,7 +692,9 @@ class ProxonHesp extends utils.Adapter {
         const val = d.value === null ? '' : d.value;
         const prev = this.lastWritten.get(`${base}.value`);
         if (prev && typeof prev.val !== typeof val) {
-            await this.extendObject(`${base}.value`, { common: { type: typeof val === 'number' ? 'number' : 'string' } });
+            await this.extendObject(`${base}.value`, {
+                common: { type: typeof val === 'number' ? 'number' : 'string' },
+            });
         }
         if (d.kind === 'text' && prev && prev.val !== val) {
             this.addEvent(`${folder} ${regName}: Text geändert auf „${val}“`);
@@ -643,7 +710,9 @@ class ProxonHesp extends utils.Adapter {
         if (isNew) {
             await this.ensureStatObjects(base, desc);
             if (Date.now() - this.startedAt > STARTUP_GRACE_MS) {
-                this.addEvent(`Neues Register ${folder} ${regName} = ${d.kind === 'empty' ? '(leer)' : val} [${toHex(f.payload)}]`);
+                this.addEvent(
+                    `Neues Register ${folder} ${regName} = ${d.kind === 'empty' ? '(leer)' : val} [${toHex(f.payload)}]`,
+                );
             }
         }
     }
@@ -655,7 +724,13 @@ class ProxonHesp extends utils.Adapter {
         });
         await this.ensureObject(`${base}.count`, {
             type: 'state',
-            common: { name: `${desc} – Anzahl Telegramme seit Adapterstart`, type: 'number', role: 'value', read: true, write: false },
+            common: {
+                name: `${desc} – Anzahl Telegramme seit Adapterstart`,
+                type: 'number',
+                role: 'value',
+                read: true,
+                write: false,
+            },
         });
     }
 
@@ -669,11 +744,23 @@ class ProxonHesp extends utils.Adapter {
     private hourly(): void {
         void this.ensureObject('info.framesPerHour', {
             type: 'state',
-            common: { name: 'Gültige Telegramme (letzte Stunde)', type: 'number', role: 'value', read: true, write: false },
+            common: {
+                name: 'Gültige Telegramme (letzte Stunde)',
+                type: 'number',
+                role: 'value',
+                read: true,
+                write: false,
+            },
         }).then(() => this.write('info.framesPerHour', this.hourOk, true));
         void this.ensureObject('info.skippedBytesPerHour', {
             type: 'state',
-            common: { name: 'Verworfene Bytes / CRC-Fehler (letzte Stunde)', type: 'number', role: 'value', read: true, write: false },
+            common: {
+                name: 'Verworfene Bytes / CRC-Fehler (letzte Stunde)',
+                type: 'number',
+                role: 'value',
+                read: true,
+                write: false,
+            },
         }).then(() => this.write('info.skippedBytesPerHour', this.hourBad, true));
         this.hourOk = 0;
         this.hourBad = 0;
@@ -693,10 +780,19 @@ class ProxonHesp extends utils.Adapter {
             if (body.length > 1 && body[0] < 0x20) {
                 body = body.subarray(1, 1 + body[0]);
             }
-            const txt = body.toString('latin1').replace(/\0[\s\S]*$/, '').trim();
+            const txt = body
+                .toString('latin1')
+                .replace(/\0[\s\S]*$/, '')
+                .trim();
             await this.ensureObject(`${id}_raw`, {
                 type: 'state',
-                common: { name: `${def.name} – Rohdaten (hex)`, type: 'string', role: 'text', read: true, write: false },
+                common: {
+                    name: `${def.name} – Rohdaten (hex)`,
+                    type: 'string',
+                    role: 'text',
+                    read: true,
+                    write: false,
+                },
             });
             await this.write(`${id}_raw`, toHex(f.payload), true);
             await this.ensureObject(id, {
@@ -749,7 +845,13 @@ class ProxonHesp extends utils.Adapter {
         const id = `${this.moduleFolder(mod)}.Meta.Verzeichnis`;
         await this.ensureObject(id, {
             type: 'state',
-            common: { name: 'DP-Verzeichnis (aus Meta-Datenpunkten)', type: 'string', role: 'json', read: true, write: false },
+            common: {
+                name: 'DP-Verzeichnis (aus Meta-Datenpunkten)',
+                type: 'string',
+                role: 'json',
+                read: true,
+                write: false,
+            },
         });
         await this.write(id, JSON.stringify(dir), true);
     }
@@ -777,7 +879,8 @@ class ProxonHesp extends utils.Adapter {
             if (!def || def.text) {
                 continue;
             }
-            const mod = [...this.moduleNames.entries()].find(([, n]) => n === m[1])?.[0] ?? Number(m[1].replace('Modul_', ''));
+            const mod =
+                [...this.moduleNames.entries()].find(([, n]) => n === m[1])?.[0] ?? Number(m[1].replace('Modul_', ''));
             if (!Number.isFinite(mod)) {
                 continue;
             }
@@ -796,11 +899,25 @@ class ProxonHesp extends utils.Adapter {
     private async restoreEvents(): Promise<void> {
         await this.ensureObject('info.events', {
             type: 'state',
-            common: { name: 'Seltene Ereignisse (neue Register, Texte, Meta)', type: 'string', role: 'json', read: true, write: false, def: '[]' },
+            common: {
+                name: 'Seltene Ereignisse (neue Register, Texte, Meta)',
+                type: 'string',
+                role: 'json',
+                read: true,
+                write: false,
+                def: '[]',
+            },
         });
         await this.ensureObject('info.lastEvent', {
             type: 'state',
-            common: { name: 'Letztes seltenes Ereignis', type: 'string', role: 'text', read: true, write: false, def: '' },
+            common: {
+                name: 'Letztes seltenes Ereignis',
+                type: 'string',
+                role: 'text',
+                read: true,
+                write: false,
+                def: '',
+            },
         });
         const st = await this.getStateAsync('info.events');
         try {
@@ -859,13 +976,22 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
         if (value < this.cfg.writeMin || value > this.cfg.writeMax) {
-            this.log.warn(`Sollwert ${value} °C für ${rel} außerhalb ${this.cfg.writeMin}–${this.cfg.writeMax} °C – ignoriert`);
+            this.log.warn(
+                `Sollwert ${value} °C für ${rel} außerhalb ${this.cfg.writeMin}–${this.cfg.writeMax} °C – ignoriert`,
+            );
             this.restoreSetpoint(mod);
             return;
         }
         // einen evtl. noch wartenden Auftrag für dasselbe Modul ersetzen
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'setpoint' || j.mod !== mod || j.sentAt !== 0);
-        this.writeQueue.push({ kind: 'setpoint', mod, value, tries: 0, sentAt: 0, notBefore: Date.now() + SETPOINT_SETTLE_MS });
+        this.writeQueue.push({
+            kind: 'setpoint',
+            mod,
+            value,
+            tries: 0,
+            sentAt: 0,
+            notBefore: Date.now() + SETPOINT_SETTLE_MS,
+        });
         this.log.info(`Sollwert-Auftrag ${rel} (Modul ${mod}) = ${value} °C eingereiht`);
     }
 
@@ -895,6 +1021,14 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private onMessage(obj: ioBroker.Message): void {
+        if (obj?.command === 'listSerial') {
+            void listSerialPorts().then(list => {
+                if (obj.callback) {
+                    this.sendTo(obj.from, obj.command, list, obj.callback);
+                }
+            });
+            return;
+        }
         if (obj?.command !== 'setClock') {
             return;
         }
@@ -902,9 +1036,18 @@ class ProxonHesp extends utils.Adapter {
         const offset = msg.offset === undefined || msg.offset === '' ? this.cfg.clockOffsetMin : Number(msg.offset);
         const ok = this.requestClock(offset);
         if (obj.callback) {
-            this.sendTo(obj.from, obj.command, ok
-                ? { result: `Auftrag eingereiht: Uhr = Systemzeit ${offset ? `${offset > 0 ? '+' : ''}${offset} min` : ''} (Ergebnis im Log)` }
-                : { error: 'Uhr stellen nicht möglich – Schreiben und „Uhr stellen erlauben“ aktivieren und speichern' }, obj.callback);
+            this.sendTo(
+                obj.from,
+                obj.command,
+                ok
+                    ? {
+                          result: `Auftrag eingereiht: Uhr = Systemzeit ${offset ? `${offset > 0 ? '+' : ''}${offset} min` : ''} (Ergebnis im Log)`,
+                      }
+                    : {
+                          error: 'Uhr stellen nicht möglich – Schreiben und „Uhr stellen erlauben“ aktivieren und speichern',
+                      },
+                obj.callback,
+            );
         }
     }
 
@@ -921,7 +1064,11 @@ class ProxonHesp extends utils.Adapter {
         this.log.info(`Heizelement-Auftrag ${rel} (Modul ${mod}) = ${value ? 'freigeben' : 'sperren'} eingereiht`);
     }
 
-    /** bei jeder Antwort: Zeitüberschreitungen prüfen und in der Buslücke höchstens EIN Telegramm senden (Schreiben vor Lesen) */
+    /**
+     * bei jeder Antwort: Zeitüberschreitungen prüfen und in der Buslücke höchstens EIN Telegramm senden (Schreiben vor Lesen)
+     *
+     * @param f
+     */
     private gapTick(f: Frame): void {
         const sent = this.writeQueue.length ? this.writeTick(f) : false;
         const q = this.queryQueue[0];
@@ -933,7 +1080,9 @@ class ProxonHesp extends utils.Adapter {
             if (++this.queryFailStreak >= QUERY_FAIL_RECONNECT) {
                 // beobachtet: Gateway nahm Anfragen an, sendete sie aber nicht auf den Bus, bis die Verbindung neu aufgebaut war
                 this.queryFailStreak = 0;
-                this.log.info(`${QUERY_FAIL_RECONNECT} Anfragen in Folge unbeantwortet – baue Verbindung zum Gateway neu auf`);
+                this.log.info(
+                    `${QUERY_FAIL_RECONNECT} Anfragen in Folge unbeantwortet – baue Verbindung zum Gateway neu auf`,
+                );
                 this.lost('keine Antworten auf Anfragen');
                 return;
             }
@@ -950,14 +1099,26 @@ class ProxonHesp extends utils.Adapter {
         }
     }
 
-    /** Lese-Anfrage einreihen; liefert die Nutzdaten der Antwort oder null */
+    /**
+     * Lese-Anfrage einreihen; liefert die Nutzdaten der Antwort oder null
+     *
+     * @param dst
+     * @param dp
+     * @param sub
+     * @param count
+     * @param maxTries
+     */
     private query(dst: number, dp: number, sub = 0, count = 1, maxTries = QUERY_MAX_TRIES): Promise<Buffer | null> {
         return new Promise(resolve => {
             this.queryQueue.push({ dst, id: (dp | (sub << 16)) >>> 0, count, tries: 0, maxTries, sentAt: 0, resolve });
         });
     }
 
-    /** gibt true zurück, wenn in dieser Lücke gesendet wurde */
+    /**
+     * gibt true zurück, wenn in dieser Lücke gesendet wurde
+     *
+     * @param f
+     */
     private writeTick(f: Frame): boolean {
         const job = this.writeQueue[0];
         if (!job.sentAt && job.notBefore && Date.now() < job.notBefore) {
@@ -1026,7 +1187,9 @@ class ProxonHesp extends utils.Adapter {
             this.sock.write(buildFrame(FrameType.Set, 1, job.mod, dp, p));
             job.sentAt = Date.now();
             job.tries++;
-            this.log.debug(`SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`);
+            this.log.debug(
+                `SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`,
+            );
             return true;
         }
         return false;
@@ -1047,7 +1210,12 @@ class ProxonHesp extends utils.Adapter {
         }
     }
 
-    /** das Modul meldet die Freigabe ~10 s nach dem SET in 0x0194 Bit 3 */
+    /**
+     * das Modul meldet die Freigabe ~10 s nach dem SET in 0x0194 Bit 3
+     *
+     * @param mod
+     * @param on
+     */
     private async onHeaterReport(mod: number, on: boolean): Promise<void> {
         this.reportedHeater.set(mod, on);
         const job = this.writeQueue[0];
@@ -1094,23 +1262,59 @@ class ProxonHesp extends utils.Adapter {
         // Bedienung und Status direkt unter der Instanz
         await this.ensureObject('Parameter_lesen', {
             type: 'state',
-            common: { name: 'Parameter aller Module einmalig lesen (nur Lese-Anfragen, dauert über eine Stunde)', type: 'boolean', role: 'button', read: false, write: true },
+            common: {
+                name: 'Parameter aller Module einmalig lesen (nur Lese-Anfragen, dauert über eine Stunde)',
+                type: 'boolean',
+                role: 'button',
+                read: false,
+                write: true,
+            },
         });
         await this.ensureObject('Parameter_lesen_aktiv', {
             type: 'state',
-            common: { name: 'Parameter-Lesen läuft', type: 'boolean', role: 'indicator.working', read: true, write: false, def: false },
+            common: {
+                name: 'Parameter-Lesen läuft',
+                type: 'boolean',
+                role: 'indicator.working',
+                read: true,
+                write: false,
+                def: false,
+            },
         });
         await this.ensureObject('Parameter_lesen_Fortschritt', {
             type: 'state',
-            common: { name: 'Fortschritt des Parameter-Lesens', type: 'number', role: 'value', unit: '%', min: 0, max: 100, read: true, write: false, def: 0 },
+            common: {
+                name: 'Fortschritt des Parameter-Lesens',
+                type: 'number',
+                role: 'value',
+                unit: '%',
+                min: 0,
+                max: 100,
+                read: true,
+                write: false,
+                def: 0,
+            },
         });
         await this.ensureObject('Parameter_lesen_Status', {
             type: 'state',
-            common: { name: 'Status des Parameter-Lesens', type: 'string', role: 'text', read: true, write: false, def: '' },
+            common: {
+                name: 'Status des Parameter-Lesens',
+                type: 'string',
+                role: 'text',
+                read: true,
+                write: false,
+                def: '',
+            },
         });
         await this.ensureObject('Parameter_lesen_zuletzt', {
             type: 'state',
-            common: { name: 'Zeitpunkt des letzten vollständigen Parameter-Lesens', type: 'number', role: 'date', read: true, write: false },
+            common: {
+                name: 'Zeitpunkt des letzten vollständigen Parameter-Lesens',
+                type: 'number',
+                role: 'date',
+                read: true,
+                write: false,
+            },
         });
         this.subscribeStates('Parameter_lesen');
         await this.setStateAsync('Parameter_lesen_aktiv', false, true);
@@ -1140,7 +1344,11 @@ class ProxonHesp extends utils.Adapter {
             .map(d => d.name)
             .join('|');
         const re = new RegExp(`\\.Meta\\.(?:(?:${lists})_\\d+(?:_raw)?|(?:${lists})_raw)$`);
-        const old = new Set([`${this.paramFolder(UNIT_ADDR)}.Lesen`, `${this.paramFolder(UNIT_ADDR)}.Status`, `${this.paramFolder(UNIT_ADDR)}.Zuletzt`]);
+        const old = new Set([
+            `${this.paramFolder(UNIT_ADDR)}.Lesen`,
+            `${this.paramFolder(UNIT_ADDR)}.Status`,
+            `${this.paramFolder(UNIT_ADDR)}.Zuletzt`,
+        ]);
         const objs = await this.getAdapterObjectsAsync();
         let n = 0;
         for (const full of Object.keys(objs)) {
@@ -1159,11 +1367,21 @@ class ProxonHesp extends utils.Adapter {
     private async setParamStatus(text: string, percent?: number): Promise<void> {
         await this.setStateAsync('Parameter_lesen_Status', text, true);
         if (percent !== undefined) {
-            await this.setStateAsync('Parameter_lesen_Fortschritt', Math.max(0, Math.min(100, Math.round(percent))), true);
+            await this.setStateAsync(
+                'Parameter_lesen_Fortschritt',
+                Math.max(0, Math.min(100, Math.round(percent))),
+                true,
+            );
         }
     }
 
-    /** eine Meta-Liste seitenweise lesen (die Antworten legt handleMeta zusätzlich unter <Modul>.Meta ab) */
+    /**
+     * eine Meta-Liste seitenweise lesen (die Antworten legt handleMeta zusätzlich unter <Modul>.Meta ab)
+     *
+     * @param mod
+     * @param dp
+     * @param offsets
+     */
     private async readMetaList(mod: number, dp: number, offsets: number[]): Promise<number[] | null> {
         const list: number[] = [];
         for (const o of offsets) {
@@ -1178,7 +1396,12 @@ class ProxonHesp extends utils.Adapter {
         return list;
     }
 
-    /** Länge des Verzeichnisses ermitteln: das Gerät antwortet nur, solange Offset + 64 <= Länge */
+    /**
+     * Länge des Verzeichnisses ermitteln: das Gerät antwortet nur, solange Offset + 64 <= Länge
+     *
+     * @param mod
+     * @param status
+     */
     private async findDirectoryOffsets(mod: number, status: (t: string) => Promise<void>): Promise<number[] | null> {
         const first = await this.query(mod, 0x0033, 0, 1);
         if (!first) {
@@ -1244,7 +1467,11 @@ class ProxonHesp extends utils.Adapter {
         return { dps, access: access || [], units: units || [] };
     }
 
-    /** Name (Meta 0x0001) lesen: Text mit Längenbyte; manche Module verlangen genau die passende Anzahl */
+    /**
+     * Name (Meta 0x0001) lesen: Text mit Längenbyte; manche Module verlangen genau die passende Anzahl
+     *
+     * @param mod
+     */
     private async readName(mod: number): Promise<void> {
         const p = await this.query(mod, 0x0001, 0, 1);
         if (!p || !p.length || p[0] >= 0x20 || p.length > p[0]) {
@@ -1276,7 +1503,8 @@ class ProxonHesp extends utils.Adapter {
             for (let mi = 0; mi < mods.length && !this.stopping; mi++) {
                 const mod = mods[mi];
                 const label = `${this.moduleFolder(mod)} (${mi + 1}/${mods.length})`;
-                const status = (t: string, frac = 0): Promise<void> => this.setParamStatus(`${label}: ${t}`, ((mi + frac) / mods.length) * 100);
+                const status = (t: string, frac = 0): Promise<void> =>
+                    this.setParamStatus(`${label}: ${t}`, ((mi + frac) / mods.length) * 100);
                 await status('Name');
                 await this.readName(mod);
                 const dir = await this.readDirectory(mod, t => status(t));
@@ -1289,7 +1517,13 @@ class ProxonHesp extends utils.Adapter {
                 await this.ensureChannel(this.paramFolder(mod), 'Parameter (per Lese-Anfrage)');
                 await this.ensureObject(`${this.paramFolder(mod)}.Verzeichnis`, {
                     type: 'state',
-                    common: { name: 'Verzeichnis (DP, Zugriff, Einheit) aus den Meta-DPs', type: 'string', role: 'json', read: true, write: false },
+                    common: {
+                        name: 'Verzeichnis (DP, Zugriff, Einheit) aus den Meta-DPs',
+                        type: 'string',
+                        role: 'json',
+                        read: true,
+                        write: false,
+                    },
                 });
                 await this.write(`${this.paramFolder(mod)}.Verzeichnis`, JSON.stringify(dir), true);
                 const ok = await this.readParamList(mod, dir.dps, (i, n, dp) =>
@@ -1332,7 +1566,11 @@ class ProxonHesp extends utils.Adapter {
         }
     }
 
-    private async readParamList(mod: number, dps: number[], progress?: (i: number, n: number, dp: number) => Promise<void>): Promise<number> {
+    private async readParamList(
+        mod: number,
+        dps: number[],
+        progress?: (i: number, n: number, dp: number) => Promise<void>,
+    ): Promise<number> {
         let ok = 0;
         for (let i = 0; i < dps.length; i++) {
             if (this.stopping) {
@@ -1379,7 +1617,11 @@ class ProxonHesp extends utils.Adapter {
     }
 
     /* ------------------------------------------------------- Lernprotokoll */
-    /** SET/Antwort: nur Änderungen protokollieren; unbekannte Telegrammtypen immer */
+    /**
+     * SET/Antwort: nur Änderungen protokollieren; unbekannte Telegrammtypen immer
+     *
+     * @param f
+     */
     private learnFrame(f: Frame): void {
         if (f.type === FrameType.Set || f.type === FrameType.Response) {
             const mod = f.type === FrameType.Response ? f.src : f.dst;
@@ -1485,7 +1727,11 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private cleanPath(s: string): string {
-        return s.split('.').map(p => this.cleanId(p)).filter(Boolean).join('.');
+        return s
+            .split('.')
+            .map(p => this.cleanId(p))
+            .filter(Boolean)
+            .join('.');
     }
 
     private async ensureModule(mod: number): Promise<void> {
@@ -1500,7 +1746,12 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(id, { type: 'channel', common: { name } });
     }
 
-    /** Zwischenebenen von Zuordnungsnamen mit Punkten als Kanal anlegen */
+    /**
+     * Zwischenebenen von Zuordnungsnamen mit Punkten als Kanal anlegen
+     *
+     * @param id
+     * @param from
+     */
     private async ensureParents(id: string, from = 2): Promise<void> {
         const parts = id.split('.');
         for (let i = from; i < parts.length; i++) {
@@ -1509,7 +1760,10 @@ class ProxonHesp extends utils.Adapter {
         }
     }
 
-    private async ensureObject(id: string, obj: Omit<ioBroker.SettableObject, '_id' | 'native'> & { native?: Record<string, unknown> }): Promise<void> {
+    private async ensureObject(
+        id: string,
+        obj: Omit<ioBroker.SettableObject, '_id' | 'native'> & { native?: Record<string, unknown> },
+    ): Promise<void> {
         if (this.known.has(id)) {
             return;
         }
@@ -1518,15 +1772,27 @@ class ProxonHesp extends utils.Adapter {
             return pending;
         }
         const p = (async () => {
-            const common = Object.fromEntries(Object.entries(obj.common as Record<string, unknown>).filter(([, v]) => v !== undefined));
-            await this.setObjectNotExistsAsync(id, { ...obj, common, native: obj.native || {} } as ioBroker.SettableObject);
+            const common = Object.fromEntries(
+                Object.entries(obj.common as Record<string, unknown>).filter(([, v]) => v !== undefined),
+            );
+            await this.setObjectNotExistsAsync(id, {
+                ...obj,
+                common,
+                native: obj.native || {},
+            } as ioBroker.SettableObject);
             this.known.add(id);
         })().finally(() => this.pendingCreate.delete(id));
         this.pendingCreate.set(id, p);
         return p;
     }
 
-    /** Schreibt nur bei Änderung, spätestens aber nach refreshSec */
+    /**
+     * Schreibt nur bei Änderung, spätestens aber nach refreshSec
+     *
+     * @param id
+     * @param val
+     * @param force
+     */
     private async write(id: string, val: ioBroker.StateValue, force = false): Promise<void> {
         const prev = this.lastWritten.get(id);
         const now = Date.now();
