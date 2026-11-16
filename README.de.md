@@ -21,7 +21,7 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 
 ## Installation
 
-> **Hinweis:** Inoffizielles Community-Projekt, nicht vom Hersteller. Alle Zuordnungen beruhen auf Beobachtungen am Bus. Nutzung auf eigene Gefahr – insbesondere die optionalen Schreibfunktionen.
+> **Hinweis:** Inoffizielles Community-Projekt, nicht vom Hersteller. Alle Zuordnungen beruhen auf Beobachtungen am Bus. Nutzung auf eigene Gefahr – insbesondere die optionalen Schreibfunktionen: Schreibzugriffe auf den Bus können die Herstellergarantie des Geräts berühren.
 
 ### 1. Gateway anschließen
 

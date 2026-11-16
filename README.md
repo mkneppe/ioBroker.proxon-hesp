@@ -9,7 +9,8 @@ By default the adapter sends nothing on the bus. Optionally it can write room se
 and read the parameters of all bus modules (read queries only).
 
 > **Note:** Unofficial community project, not affiliated with the manufacturer. All mappings are based on bus observations,
-> not on manufacturer documentation. Use at your own risk, especially the optional write functions.
+> not on manufacturer documentation. Use at your own risk, especially the optional write functions:
+> writing to the bus may affect the manufacturer's warranty of your unit.
 
 ## Requirements
 
