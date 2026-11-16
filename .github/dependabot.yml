@@ -11,6 +11,9 @@ updates:
       ignore:
           - dependency-name: '@types/node'
             update-types: ['version-update:semver-major']
+          # TypeScript 7 wird von typescript-eslint noch nicht unterstützt
+          - dependency-name: 'typescript'
+            update-types: ['version-update:semver-major']
     - package-ecosystem: github-actions
       directory: /
       schedule:
