@@ -96,12 +96,11 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### **WORK IN PROGRESS**
+### 0.5.0 (2026-11-17)
 
 - Data source selectable: TCP client (as before), TCP server (the gateway connects to the adapter) or a serial interface (e.g. USB-RS485)
 - Admin UI translated (English, German and further languages); news and description in all languages
 - Node.js ≥ 22 and Admin ≥ 7.6.20 required; standard ioBroker test and release workflow
-
 - Address 30 identified as PTC module (name "PTC-Modul"); new states heat pump requested/active, room sensor correction
 - Optional learning log: every value change and all unrecognised bytes in daily files
 - Read parameters: up to 8 tries per query (the bus gap is only ~70–80 ms, only about 40 % of the queries get through), rejections (type 4) are recognised immediately; after 12 unanswered queries in a row the gateway connection is re-established
