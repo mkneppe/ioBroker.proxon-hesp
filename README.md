@@ -97,6 +97,11 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
+### **WORK IN PROGRESS**
+
+- First release published automatically via npm trusted publishing (with provenance)
+- README: link to the manufacturer; package metadata cleaned up
+
 ### 0.5.0 (2026-11-17)
 
 - Data source selectable: TCP client (as before), TCP server (the gateway connects to the adapter) or a serial interface (e.g. USB-RS485)

@@ -124,7 +124,12 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### Neu (noch nicht veröffentlicht)
+### 0.5.1 (2026-11-17)
+
+- Erstes Release, das automatisch per npm Trusted Publishing (mit Herkunftsnachweis) veröffentlicht wird
+- README: Link zum Hersteller; Paket-Metadaten bereinigt
+
+### 0.5.0 (2026-11-17)
 
 - Datenquelle wählbar: TCP-Client (wie bisher), TCP-Server (das Gateway verbindet sich mit dem Adapter) oder serielle Schnittstelle (z. B. USB-RS485)
 - Admin-Oberfläche übersetzt (Englisch, Deutsch und weitere Sprachen); Neuigkeiten und Beschreibung in allen Sprachen
