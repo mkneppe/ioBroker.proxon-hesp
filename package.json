@@ -44,7 +44,7 @@
     "@iobroker/types": "^7.2.5",
     "@tsconfig/node22": "^22.0.7",
     "@types/node": "^22.0.0",
-    "typescript": "~5.8.3"
+    "typescript": "~5.9.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
