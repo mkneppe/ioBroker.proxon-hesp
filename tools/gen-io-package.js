@@ -141,6 +141,7 @@ const io = {
         loglevel: 'info',
         tier: 3,
         messagebox: true,
+        nogit: true,
         mode: 'daemon',
         type: 'climate-control',
         compact: true,
