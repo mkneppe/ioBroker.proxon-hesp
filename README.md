@@ -96,8 +96,7 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
-
-### **WORK IN PROGRESS**
+### 0.5.1 (2026-11-17)
 
 - First release published automatically via npm trusted publishing (with provenance)
 - README: link to the manufacturer; package metadata cleaned up
