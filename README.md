@@ -2,7 +2,8 @@
 
 *[Deutsche Version / German version](README.de.md)*
 
-Listens **passively** to the internal HESP bus of Proxon ventilation/heat-pump units (e.g. FWT 2-R)
+Listens **passively** to the internal HESP bus of Proxon ventilation/heat-pump units (e.g. FWT 2-R,
+manufacturer: [Zimmermann Lüftungs- und Wärmesysteme](https://www.zimmermann-lueftung.de/))
 and stores all values in ioBroker. The bus is reached through an RS485-to-TCP gateway or directly
 through a serial RS485 interface (e.g. a USB-RS485 adapter).
 By default the adapter sends nothing on the bus. Optionally it can write room setpoints
@@ -31,7 +32,7 @@ and read the parameters of all bus modules (read queries only).
    - Settings: 19200 baud, 8 data bits, no parity, 1 stop bit.
    - Gateway mode: TCP server (or TCP client, see above), transparent (no Modbus conversion).
 2. **Adapter:** in Admin → *Adapters* click the GitHub icon (*Custom*), select *Custom URL* and enter the URL of the release package, e.g.
-   `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.4.0/iobroker.proxon-hesp-0.4.0.tgz`.
+   `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz`.
    - Or on the console: `iob url <that URL>`.
    - Then create an instance.
 3. **Instance:**

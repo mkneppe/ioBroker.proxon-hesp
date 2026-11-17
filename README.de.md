@@ -2,7 +2,8 @@
 
 *[English version](README.md)*
 
-Liest den internen HESP-Bus von Proxon-Lüftungsanlagen/Wärmepumpen (z. B. FWT 2-R) **passiv** mit und legt alle Werte in ioBroker ab.
+Liest den internen HESP-Bus von Proxon-Lüftungsanlagen/Wärmepumpen (z. B. FWT 2-R, Hersteller:
+[Zimmermann Lüftungs- und Wärmesysteme](https://www.zimmermann-lueftung.de/)) **passiv** mit und legt alle Werte in ioBroker ab.
 Der Bus wird über ein RS485-TCP-Gateway oder direkt über eine serielle RS485-Schnittstelle (z. B. USB-RS485-Adapter) erreicht.
 Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuerung**) können Raum-Sollwerte geschrieben werden.
 
@@ -34,10 +35,10 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 
 - Im Admin unter **Adapter** auf das GitHub-Symbol („Benutzerdefiniert“) klicken.
 - Den Reiter **Beliebig** wählen und die URL des Release-Pakets eintragen, z. B.
-  `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.4.0/iobroker.proxon-hesp-0.4.0.tgz`
+  `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz`
 - Alternativ auf der Konsole:
   ```
-  iob url https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.4.0/iobroker.proxon-hesp-0.4.0.tgz
+  iob url https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz
   ```
 - Danach eine Instanz anlegen.
 

@@ -60,7 +60,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mkneppe/ioBroker.proxon-hesp"
+    "url": "git+https://github.com/mkneppe/ioBroker.proxon-hesp.git"
   },
   "homepage": "https://github.com/mkneppe/ioBroker.proxon-hesp",
   "bugs": {
