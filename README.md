@@ -109,7 +109,7 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 0.6.0 (2026-11-18)
 
 - (breaking) English object IDs; existing installations are migrated automatically on the first start (see "Upgrading from 0.5.x")
 - State names in English and German; log messages, event texts and value texts in English

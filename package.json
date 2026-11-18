@@ -1,6 +1,6 @@
 {
   "name": "iobroker.proxon-hesp",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Reads (and optionally writes) the HESP bus of Proxon ventilation/heat-pump units via an RS485-to-TCP gateway",
   "author": {
     "name": "Martin",
