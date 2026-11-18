@@ -31,14 +31,11 @@ and read the parameters of all bus modules (read queries only).
 1. **Bus access:** connect an RS485-to-TCP gateway (tested: USR-TCP232 series) or a USB-RS485 adapter to the HESP bus lines (A/B) of the unit.
    - Settings: 19200 baud, 8 data bits, no parity, 1 stop bit.
    - Gateway mode: TCP server (or TCP client, see above), transparent (no Modbus conversion).
-2. **Adapter:** in Admin → *Adapters* click the GitHub icon (*Custom*), select *Custom URL* and enter the URL of the release package, e.g.
-   `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz`.
-   - Or on the console: `iob url <that URL>`.
-   - Then create an instance.
+2. **Adapter:** install it in Admin → *Adapters* and create an instance.
 3. **Instance:**
    - **Connection:** data source (TCP client, TCP server or serial interface) and its settings.
    - **Modules:** map bus addresses to folder names.
-     - `2` = ventilation unit, `10`–`15` = room modules, probably secondary control units (NBE, "Neben-Bedienelement"; they report the name "Nbe").
+     - `2` = ventilation unit (`unit`), `10`–`15` = room modules (`room10` … `room15`, rename them as you like), probably secondary control units (NBE, "Neben-Bedienelement"; they report the name "Nbe").
      - On the analysed installation, 10–15 followed the order of the central control unit (BDE): hall, bedroom, child 1–4.
    - **Mappings:** the defaults fit an FWT 2-R with BDE Comfort.
    - **Control** (optional): enable room setpoint writing and periodic parameter polling.
@@ -52,27 +49,42 @@ and read the parameters of all bus modules (read queries only).
 | `info.capture` | Switch: writes all telegrams for *n* minutes to a file in the instance data folder |
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistics |
 | `<module>.<name>` | Named values according to the **mappings** table (a leading `/` creates the state below the instance root) |
-| `<module>.Register.<R/W>_<DP>` | Every register seen: `value` (auto-decoded), `raw` (hex), `lastSeen`, `count` |
-| `<room>.Heizelement_freigeben` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The central control unit (BDE) is not informed. The key lock (`0x0199`) cannot be switched this way: the central control unit rewrites it about every 11 s |
-| `Zentrale.Geraet.Uhr_stellen` | Only if "allow setting the clock" is enabled: button; sets the clock of the ventilation unit (SET `1>2 0x032E`) to system time + offset (settings). The button "Uhr jetzt stellen" in the settings does the same. Only date, hour and minute are set – the unit keeps counting its own seconds; the minute is chosen so that the deviation is at most 30 s. The central control unit queries the time from the unit and then shows the new time |
-| `<room>.Sollwert` | Only if writing is enabled: writable setpoint, sent as SET `0x01FB` to the room module and acknowledged after the module reports it back. It is sent only 2 s after the last change (sliders deliver intermediate values while dragging). It is sent in the bus gaps after `2>1 0x02D9` and after `40>1 0x0194` (only ~70 ms each); frames there often collide with bus traffic, so up to 10 attempts are made. So far an active key lock does not appear to prevent the module from accepting it |
-| `<module>.Meta.*` | Self-description of a module (name, DP list, type codes, access, units, error text) |
-| `<module>.Parameter.*` | Values of all registers of a module, read with *read parameters* |
-| `Parameter_lesen*` | Button and status (active, progress, text, timestamp) of *read parameters* |
+| `<module>.registers.<R/W>_<DP>` | Every register seen: `value` (auto-decoded), `raw` (hex), `lastSeen`, `count` |
+| `<room>.heaterEnable` | Only if "enable/lock room heater" is enabled: writable (true/false), sent once as SET `0x0196` and acknowledged once the module reports the state in `0x0194` bit 3. The central control unit (BDE) is not informed. The key lock (`0x0199`) cannot be switched this way: the central control unit rewrites it about every 11 s |
+| `unit.device.setClock` | Only if "allow setting the clock" is enabled: button; sets the clock of the ventilation unit (SET `1>2 0x032E`) to system time + offset (settings). The button "Set clock now" in the settings does the same. Only date, hour and minute are set – the unit keeps counting its own seconds; the minute is chosen so that the deviation is at most 30 s. The central control unit queries the time from the unit and then shows the new time |
+| `<room>.setpoint` | Only if writing is enabled: writable setpoint, sent as SET `0x01FB` to the room module and acknowledged after the module reports it back. It is sent only 2 s after the last change (sliders deliver intermediate values while dragging). It is sent in the bus gaps after `2>1 0x02D9` and after `40>1 0x0194` (only ~70 ms each); frames there often collide with bus traffic, so up to 10 attempts are made. So far an active key lock does not appear to prevent the module from accepting it |
+| `<module>.meta.*` | Self-description of a module (name, DP list, type codes, access, units, error text) |
+| `<module>.parameters.*` | Values of all registers of a module, read with *read parameters* |
+| `paramRead.*` | Button `start` and status (`running`, `progress`, `status`, `lastRun`) of *read parameters* |
 
 `R` = reply of a module to a read query, `W` = value the master writes to the module. Register numbers in state IDs are decimal.
 
+The writable states (`setpoint`, `heaterEnable`, `setClock`) only exist while the corresponding option is enabled.
+
+## Upgrading from 0.5.x
+
+Up to version 0.5.x the object IDs were German (e.g. `Zentrale.Temperaturen.T1_Zuluft`). Version 0.6.0 uses
+English IDs (e.g. `unit.temperatures.t1SupplyAir`). On the first start the adapter migrates once:
+- module and mapping names in the instance configuration, as far as they still have the former default names
+  (own names, e.g. room names, are kept),
+- all objects including their current value and their settings (e.g. history logging),
+- the learning log folder (`lernen` → `learn`).
+
+The list of old and new IDs is written to `iobroker-data/proxon-hesp.N/migration-0.6.0.json`.
+**Values recorded before the upgrade stay under the old IDs** in your history database; scripts, visualisations
+and charts have to be switched to the new IDs.
+
 ## Learning log
 
-Option *Learning log* (tab *Erweitert* / advanced, off by default) writes daily files to `iobroker-data/proxon-hesp.N/lernen/`:
-- `aenderungen_YYYY-MM-DD.log`: every value change of a register, one line `ms-timestamp R|W<module>:<dp hex>:<sub> <payload hex>`. Each file starts with the complete state.
-- `unbekannt_YYYY-MM-DD.log`: bytes that could not be recognised as a telegram (CRC errors, garbage) and telegrams of unknown type.
+Option *Learning log* (tab *Advanced*, off by default) writes daily files to `iobroker-data/proxon-hesp.N/learn/`:
+- `changes_YYYY-MM-DD.log`: every value change of a register, one line `ms-timestamp R|W<module>:<dp hex>:<sub> <payload hex>`. Each file starts with the complete state.
+- `unknown_YYYY-MM-DD.log`: bytes that could not be recognised as a telegram (CRC errors, garbage) and telegrams of unknown type.
 
 Files older than the configured number of days (default 90, 0 = keep) are deleted. A day file is typically a few MB.
 
 ## Read parameters
 
-The button `Parameter_lesen` queries every configured module, the ventilation unit first:
+The button `paramRead.start` queries every configured module, the ventilation unit first:
 - its name (meta `0x0001`)
 - its directory (meta `0x0033` DP list, `0x0034` type, `0x0038` access, `0x0039` unit)
 - every parameter once
@@ -96,6 +108,15 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- (breaking) English object IDs; existing installations are migrated automatically on the first start (see "Upgrading from 0.5.x")
+- State names in English and German; log messages, event texts and value texts in English
+- Learning log files renamed (`learn/changes_*`, `learn/unknown_*`)
+- Timer settings are limited to valid ranges in the code
+- Writable states of disabled options are removed; missing parent channels are created
+- README: installation only via the ioBroker repository; NOTICE.md in English
+
 ### 0.5.1 (2026-11-17)
 
 - First release published automatically via npm trusted publishing (with provenance)

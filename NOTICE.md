@@ -1,4 +1,57 @@
-# Quellen und Danksagung
+# Sources and acknowledgements
+
+*German version below / Deutsche Fassung weiter unten.*
+
+This adapter is an independent community project and not affiliated with Zimmermann
+Lüftungs- und Wärmesysteme. "PROXON" is a trademark of its owner.
+
+Knowledge about the protocol and the data points comes from the following sources:
+
+- **Markus Mauch – "Proxon P-Serie · HESP-Bus"**, https://markusmauch.github.io/proxon-hesp/
+  Content licensed under Creative Commons Attribution 4.0 International (CC BY 4.0),
+  https://creativecommons.org/licenses/by/4.0/
+  Taken over, adapted and extended for this adapter: telegram structure, type nibble, meta data points,
+  temperature sensor names, bypass, filter remaining time.
+- **David Nierhaus – proxon-hesp-homeassistant**, https://github.com/DNier/proxon-hesp-homeassistant
+  (MIT license): mappings for, among others, the temperature block 0x03B7, fan control and
+  fan curves, fan level status words 0x0208, operating hours, calendar/time
+  0x032E/0x0330, valve indicators 0x006C, length field overflow for 128-byte replies.
+  Its byte-wise checksum recursion is mathematically identical to the CRC-16 formulation
+  used here (polynomial 0x8048 reflected, 16 shift steps per byte).
+  Only the mappings (meaning of the data points) were taken over, no program code.
+  Copyright notice of the project:
+
+  > MIT License
+  >
+  > Copyright (c) 2026 David Nierhaus
+  >
+  > Permission is hereby granted, free of charge, to any person obtaining a copy
+  > of this software and associated documentation files (the "Software"), to deal
+  > in the Software without restriction, including without limitation the rights
+  > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  > copies of the Software, and to permit persons to whom the Software is
+  > furnished to do so, subject to the following conditions:
+  >
+  > The above copyright notice and this permission notice shall be included in all
+  > copies or substantial portions of the Software.
+  >
+  > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  > SOFTWARE.
+- Own bus captures and read queries on one installation (FWT 2-R, BDE Comfort) with room modules (addresses 10–15) and an air quality sensor (address 40, reports itself as "LQS-CO2RH…").
+
+All mappings are based on observations, not on manufacturer documentation.
+
+The manufacturer information (trademark PROXON, Zimmermann Lüftungs- und Wärmesysteme) only describes
+which devices the adapter works with. Manufacturer documents are not part of this project.
+
+---
+
+## Quellen und Danksagung (Deutsch)
 
 Dieser Adapter ist ein unabhängiges Community-Projekt und nicht mit Zimmermann
 Lüftungs- und Wärmesysteme verbunden. „PROXON“ ist eine Marke ihres Inhabers.

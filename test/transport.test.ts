@@ -24,7 +24,7 @@ test('Transport TCP-Client: empfängt und sendet', async () => {
     assert.equal(Buffer.concat(got).toString('hex'), 'c3');
     const lost = once<string>(t, 'lost');
     peer?.destroy();
-    assert.match(await lost, /geschlossen/);
+    assert.match(await lost, /closed/);
     server.close();
 });
 

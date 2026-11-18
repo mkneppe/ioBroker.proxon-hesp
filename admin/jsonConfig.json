@@ -8,7 +8,7 @@
             "items": {
                 "hdrInfo": {
                     "type": "staticText",
-                    "text": "The adapter listens to the HESP bus (19200 baud, 8N1). It only sends when enabled under \"Control\" (room setpoints, heater, clock, periodic parameter polling) or when the button Parameter_lesen is pressed. Data source: an RS485-to-TCP gateway that forwards the bytes transparently (the adapter connects to it, or the gateway connects to the adapter), or an RS485 interface directly on this computer (e.g. a USB-RS485 adapter).",
+                    "text": "The adapter listens to the HESP bus (19200 baud, 8N1). It only sends when enabled under \"Control\" (room setpoints, heater, clock, periodic parameter polling) or when the button paramRead.start is pressed. Data source: an RS485-to-TCP gateway that forwards the bytes transparently (the adapter connects to it, or the gateway connects to the adapter), or an RS485 interface directly on this computer (e.g. a USB-RS485 adapter).",
                     "newLine": true,
                     "xs": 12,
                     "sm": 12,
@@ -205,7 +205,7 @@
             "items": {
                 "hdrModules": {
                     "type": "staticText",
-                    "text": "Bus address -> folder name. Unknown addresses appear as Modul_<address>.",
+                    "text": "Bus address -> folder name. Unknown addresses appear as module<address>.",
                     "xs": 12,
                     "sm": 12,
                     "md": 12,
@@ -415,7 +415,7 @@
             "items": {
                 "storeRegisters": {
                     "type": "checkbox",
-                    "label": "Also store all registers under <module>.Register (auto-decoded + raw data)",
+                    "label": "Also store all registers under <module>.registers (auto-decoded + raw data)",
                     "newLine": true,
                     "xs": 12,
                     "sm": 12,
@@ -472,7 +472,7 @@
                 },
                 "learnLog": {
                     "type": "checkbox",
-                    "label": "Learning log: every value change and unrecognised bytes in daily files (iobroker-data/proxon-hesp.N/lernen/)",
+                    "label": "Learning log: every value change and unrecognised bytes in daily files (iobroker-data/proxon-hesp.N/learn/)",
                     "newLine": true,
                     "xs": 12,
                     "sm": 12,
@@ -500,7 +500,7 @@
             "items": {
                 "hdrControl": {
                     "type": "staticText",
-                    "text": "By default the adapter only listens. If writing is allowed, a state <room>.Sollwert is created for each room module. It is rounded to the step; most room modules only accept whole degrees (20.5 °C was ignored in a test). A written value is sent as SET 0x01FB to the room module 2 s after the last change, in a quiet gap of the bus cycle (up to 10 tries), and acknowledged (ack) only after the module reports it back. This matches the behaviour of the central control unit.",
+                    "text": "By default the adapter only listens. If writing is allowed, a state <room>.setpoint is created for each room module. It is rounded to the step; most room modules only accept whole degrees (20.5 °C was ignored in a test). A written value is sent as SET 0x01FB to the room module 2 s after the last change, in a quiet gap of the bus cycle (up to 10 tries), and acknowledged (ack) only after the module reports it back. This matches the behaviour of the central control unit.",
                     "xs": 12,
                     "sm": 12,
                     "md": 12,
@@ -575,7 +575,7 @@
                 "allowHeaterWrite": {
                     "type": "checkbox",
                     "label": "Allow enabling/locking the room heater (SET 0x0196)",
-                    "help": "Creates <room>.Heizelement_freigeben. The central control unit (BDE) is not informed and may show the old state.",
+                    "help": "Creates <room>.heaterEnable. The central control unit (BDE) is not informed and may show the old state.",
                     "newLine": true,
                     "hidden": "!data.allowWrite",
                     "xs": 12,
@@ -614,7 +614,7 @@
                 "clockOffsetMin": {
                     "type": "number",
                     "label": "Clock offset (minutes)",
-                    "help": "Time = system time + offset, e.g. 5 = the clock runs 5 min fast; also used by the state Zentrale.Geraet.Uhr_stellen (save for that)",
+                    "help": "Time = system time + offset, e.g. 5 = the clock runs 5 min fast; also used by the state unit.device.setClock (save for that)",
                     "min": -1440,
                     "max": 1440,
                     "step": 1,
@@ -639,7 +639,7 @@
                 },
                 "txtParams": {
                     "type": "staticText",
-                    "text": "The button \"Parameter_lesen\" (directly under the instance) queries each module in turn: name (meta 0x0001), directory (meta 0x0033/0x0034/0x0038/0x0039) and then every parameter. The values are stored under <module>.Parameter, the self-description under <module>.Meta. Only read queries are sent, one per bus gap (about every 12 s), so a complete run takes more than an hour. Parameter_lesen_aktiv, _Fortschritt and _Status show the progress. Periodic polling only affects the ventilation unit: the DPs given below (empty = all from its directory, requires one complete read first).",
+                    "text": "The button \"paramRead.start\" (directly under the instance) queries each module in turn: name (meta 0x0001), directory (meta 0x0033/0x0034/0x0038/0x0039) and then every parameter. The values are stored under <module>.parameters, the self-description under <module>.meta. Only read queries are sent, one per bus gap (about every 12 s), so a complete run takes more than an hour. paramRead.running, .progress and .status show the progress. Periodic polling only affects the ventilation unit: the DPs given below (empty = all from its directory, requires one complete read first).",
                     "newLine": true,
                     "xs": 12,
                     "sm": 12,

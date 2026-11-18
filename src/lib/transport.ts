@@ -60,12 +60,12 @@ class TcpClientTransport extends Transport {
         sock.setNoDelay(true);
         sock.on('connect', () => {
             sock.setKeepAlive(true, 15000);
-            this.emit('open', `Verbunden mit ${this.describe()}`);
+            this.emit('open', `Connected to ${this.describe()}`);
         });
         sock.on('data', chunk => this.emit('data', chunk));
-        sock.on('timeout', () => this.fail('Timeout, keine Daten'));
+        sock.on('timeout', () => this.fail('timeout, no data'));
         sock.on('error', err => this.fail(err.message));
-        sock.on('close', () => this.fail('Verbindung geschlossen'));
+        sock.on('close', () => this.fail('connection closed'));
     }
 
     write(data: Buffer): void {
@@ -95,7 +95,7 @@ class TcpServerTransport extends Transport {
         this.server = net.createServer(sock => this.accept(sock));
         this.server.on('error', err => this.fail(`Server: ${err.message}`));
         this.server.listen(opts.port ?? 502, opts.bind || '0.0.0.0', () => {
-            this.emit('info', `Warte auf Gateway an ${this.describe()}`);
+            this.emit('info', `Waiting for the gateway on ${this.describe()}`);
         });
     }
 
@@ -113,10 +113,10 @@ class TcpServerTransport extends Transport {
             sock.setTimeout(this.opts.idleTimeoutMs);
         }
         sock.on('data', chunk => this.emit('data', chunk));
-        sock.on('timeout', () => this.dropClient(sock, 'Timeout, keine Daten'));
+        sock.on('timeout', () => this.dropClient(sock, 'timeout, no data'));
         sock.on('error', err => this.dropClient(sock, err.message));
         sock.on('close', () => this.dropClient(sock, 'Gateway hat die Verbindung geschlossen'));
-        this.emit('open', `Gateway ${sock.remoteAddress}:${sock.remotePort} verbunden (${this.describe()})`);
+        this.emit('open', `Gateway ${sock.remoteAddress}:${sock.remotePort} connected (${this.describe()})`);
     }
 
     /**
@@ -133,7 +133,7 @@ class TcpServerTransport extends Transport {
         sock.on('error', () => undefined);
         sock.destroy();
         this.client = null;
-        this.emit('info', `Gateway getrennt (${reason}) – warte auf neue Verbindung`);
+        this.emit('info', `Gateway disconnected (${reason}) – waiting for a new connection`);
         this.emit('down');
     }
 
@@ -157,7 +157,7 @@ class TcpServerTransport extends Transport {
     }
 
     describe(): string {
-        return `TCP-Server ${this.opts.bind || '0.0.0.0'}:${this.opts.port}`;
+        return `TCP server ${this.opts.bind || '0.0.0.0'}:${this.opts.port}`;
     }
 }
 
@@ -180,7 +180,7 @@ class SerialTransport extends Transport {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             SerialPort = require('serialport').SerialPort;
         } catch (e) {
-            setImmediate(() => this.fail(`Modul serialport nicht verfügbar: ${(e as Error).message}`));
+            setImmediate(() => this.fail(`Module serialport not available: ${(e as Error).message}`));
             return;
         }
         const port = new SerialPort({
@@ -192,10 +192,10 @@ class SerialTransport extends Transport {
             autoOpen: true,
         });
         this.port = port;
-        port.on('open', () => this.emit('open', `Serielle Schnittstelle ${this.describe()} geöffnet`));
+        port.on('open', () => this.emit('open', `Serial interface ${this.describe()} opened`));
         port.on('data', (chunk: Buffer) => this.emit('data', chunk));
         port.on('error', (err: Error) => this.fail(err.message));
-        port.on('close', () => this.fail('Schnittstelle geschlossen'));
+        port.on('close', () => this.fail('interface closed'));
     }
 
     write(data: Buffer): void {

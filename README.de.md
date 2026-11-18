@@ -33,23 +33,16 @@ Standardmäßig sendet der Adapter nichts auf den Bus. Optional (Reiter **Steuer
 
 ### 2. Adapter installieren
 
-- Im Admin unter **Adapter** auf das GitHub-Symbol („Benutzerdefiniert“) klicken.
-- Den Reiter **Beliebig** wählen und die URL des Release-Pakets eintragen, z. B.
-  `https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz`
-- Alternativ auf der Konsole:
-  ```
-  iob url https://github.com/mkneppe/ioBroker.proxon-hesp/releases/download/v0.5.0/iobroker.proxon-hesp-0.5.0.tgz
-  ```
-- Danach eine Instanz anlegen.
+- Im Admin unter **Adapter** installieren und eine Instanz anlegen.
 
 ### 3. Instanz einrichten
 
 - **Verbindung:** Datenquelle (TCP-Client, TCP-Server oder serielle Schnittstelle) und deren Einstellungen.
 - **Module:** Busadresse → Ordnername. Übliche Belegung:
-  - `2` = Lüftungsgerät
-  - `10`–`15` = Raummodule, vermutlich Neben-Bedienelemente (NBE; sie melden als Namen „Nbe“)
+  - `2` = Lüftungsgerät (`unit`)
+  - `10`–`15` = Raummodule (`room10` … `room15`, nach Belieben umbenennen), vermutlich Neben-Bedienelemente (NBE; sie melden als Namen „Nbe“)
   - Bei der untersuchten Anlage entsprachen 10–15 der Reihenfolge im zentralen Bedienelement (BDE): Diele, Schlafen, Kind 1–4.
-  - Unbekannte Teilnehmer erscheinen als `Modul_<Adresse>`.
+  - Unbekannte Teilnehmer erscheinen als `module<Adresse>`.
 - **Zuordnungen:** Die Standardzeilen passen für eine FWT 2-R mit BDE Comfort. Sie lassen sich beliebig ergänzen.
 - **Steuerung** (optional): Schreiben von Raum-Sollwerten freigeben, regelmäßige Parameter-Abfrage.
 
@@ -63,17 +56,32 @@ Nach dem Start erscheinen die Werte innerhalb weniger Sekunden. `info.connection
 | `info.events`, `info.lastEvent` | Seltene Ereignisse: neue Register, geänderte Texte, Meta-Antworten |
 | `info.capture` | Schalter: schreibt alle Telegramme für *n* Minuten in eine Datei im Instanz-Datenordner (`iobroker-data/proxon-hesp.0/`) |
 | `info.framesPerHour`, `info.skippedBytesPerHour` | Statistik |
-| `<Modul>.<Name>` | Benannte Werte gemäß Tabelle **Zuordnungen** (Name mit führendem `/` = ab Instanzwurzel, z. B. `/Wohnen.Temperatur`) |
-| `<Modul>.Register.<R/W>_<DP>` | Jedes mitgelesene Register: `value` (automatisch gedeutet: Zahl, Text oder Liste), `raw` (hex), `lastSeen`, `count` |
-| `<Raum>.Heizelement_freigeben` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Das zentrale Bedienelement (BDE) erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: das zentrale Bedienelement schreibt sie alle ~11 s neu |
-| `Zentrale.Geraet.Uhr_stellen` | nur bei „Uhr stellen erlauben“: Taste; stellt die Uhr des Lüftungsgeräts (SET `1>2 0x032E`) auf Systemzeit + Versatz (Einstellungen). Gleiches geht über die Taste „Uhr jetzt stellen“ in den Einstellungen. Gesetzt werden nur Datum, Stunde und Minute – die Sekunden zählt das Gerät selbst weiter; die Minute wird so gewählt, dass die Abweichung höchstens 30 s beträgt. Das zentrale Bedienelement fragt die Uhrzeit beim Gerät ab und zeigt dann die neue Zeit an |
-| `<Raum>.Sollwert` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt. Gesendet wird erst 2 s nach der letzten Änderung (Schieberegler liefern beim Ziehen Zwischenwerte). Gesendet wird in den Buslücken nach `2>1 0x02D9` und nach `40>1 0x0194` (je nur ~70 ms); da Telegramme dort oft mit dem Busverkehr kollidieren, bis zu 10 Versuche. Eine aktive Tastensperre verhindert die Übernahme nach bisheriger Beobachtung nicht |
-| `<Modul>.Meta.*` | Selbstauskunft der Module (Name, DP-Liste, Typcodes, Zugriff, Einheiten, Fehlertext), durch „Parameter lesen“ oder wenn der Master sie abfragt |
-| `<Modul>.Parameter.*` | Mit „Parameter lesen“ abgefragte Werte aller Register eines Moduls |
-| `Parameter_lesen*` | Knopf und Status (aktiv, Fortschritt, Text, Zeitpunkt) des Parameter-Lesens |
+| `<Modul>.<Name>` | Benannte Werte gemäß Tabelle **Zuordnungen** (Name mit führendem `/` = ab Instanzwurzel, z. B. `/controlPanelRoom.temperature`) |
+| `<Modul>.registers.<R/W>_<DP>` | Jedes mitgelesene Register: `value` (automatisch gedeutet: Zahl, Text oder Liste), `raw` (hex), `lastSeen`, `count` |
+| `<Raum>.heaterEnable` | nur bei „Heizelement freigeben/sperren erlauben“: schreibbar (true/false); wird einmalig als SET `0x0196` gesendet und bestätigt, sobald das Modul den Zustand in `0x0194` Bit 3 meldet. Das zentrale Bedienelement (BDE) erfährt davon nichts. Die Tastensperre (`0x0199`) ist so nicht schaltbar: das zentrale Bedienelement schreibt sie alle ~11 s neu |
+| `unit.device.setClock` | nur bei „Uhr stellen erlauben“: Taste; stellt die Uhr des Lüftungsgeräts (SET `1>2 0x032E`) auf Systemzeit + Versatz (Einstellungen). Gleiches geht über die Taste „Uhr jetzt stellen“ in den Einstellungen. Gesetzt werden nur Datum, Stunde und Minute – die Sekunden zählt das Gerät selbst weiter; die Minute wird so gewählt, dass die Abweichung höchstens 30 s beträgt. Das zentrale Bedienelement fragt die Uhrzeit beim Gerät ab und zeigt dann die neue Zeit an |
+| `<Raum>.setpoint` | nur bei „Schreiben erlauben“: schreibbarer Sollwert; wird einmalig als SET `0x01FB` an das Raummodul gesendet und nach dessen Rückmeldung bestätigt. Gesendet wird erst 2 s nach der letzten Änderung (Schieberegler liefern beim Ziehen Zwischenwerte). Gesendet wird in den Buslücken nach `2>1 0x02D9` und nach `40>1 0x0194` (je nur ~70 ms); da Telegramme dort oft mit dem Busverkehr kollidieren, bis zu 10 Versuche. Eine aktive Tastensperre verhindert die Übernahme nach bisheriger Beobachtung nicht |
+| `<Modul>.meta.*` | Selbstauskunft der Module (Name, DP-Liste, Typcodes, Zugriff, Einheiten, Fehlertext), durch „Parameter lesen“ oder wenn der Master sie abfragt |
+| `<Modul>.parameters.*` | Mit „Parameter lesen“ abgefragte Werte aller Register eines Moduls |
+| `paramRead.*` | Knopf `start` und Status (`running`, `progress`, `status`, `lastRun`) des Parameter-Lesens |
 
 `R` = Antwort des Moduls auf eine Leseanfrage, `W` = Wert, den der Master an das Modul schreibt.
 Registernummern sind dezimal (z. B. `R_951` = DP `0x03B7`).
+
+Die schreibbaren Datenpunkte (`setpoint`, `heaterEnable`, `setClock`) gibt es nur, solange die jeweilige Option eingeschaltet ist.
+
+## Umstieg von 0.5.x
+
+Bis Version 0.5.x waren die Objekt-IDs deutsch (z. B. `Zentrale.Temperaturen.T1_Zuluft`). Ab 0.6.0 sind sie
+englisch (z. B. `unit.temperatures.t1SupplyAir`). Beim ersten Start stellt der Adapter einmalig um:
+- Modul- und Zuordnungsnamen in der Instanzkonfiguration, soweit sie noch die früheren Standardnamen tragen
+  (eigene Namen, z. B. Raumnamen, bleiben erhalten),
+- alle Objekte samt aktuellem Wert und Einstellungen (z. B. History-Aufzeichnung),
+- den Ordner des Lernprotokolls (`lernen` → `learn`).
+
+Die Liste alter und neuer IDs steht danach in `iobroker-data/proxon-hesp.N/migration-0.6.0.json`.
+**Bereits aufgezeichnete Werte bleiben in der History-Datenbank unter den alten IDs**; Skripte, Visualisierungen
+und Diagramme müssen auf die neuen IDs umgestellt werden.
 
 ## Zuordnungen
 
@@ -86,24 +94,24 @@ Betriebsstunden, Verdichterdrehzahl, Gerätezeit und Raummodule ab.
 
 ## Lernprotokoll
 
-Die Option *Lernprotokoll* (Reiter *Erweitert*, standardmäßig aus) schreibt Tagesdateien nach `iobroker-data/proxon-hesp.N/lernen/`:
-- `aenderungen_JJJJ-MM-TT.log`: jede Wertänderung eines Registers, je Zeile `ms-Zeitstempel R|W<Modul>:<DP hex>:<Sub> <Nutzdaten hex>`. Jede Datei beginnt mit dem vollständigen Stand.
-- `unbekannt_JJJJ-MM-TT.log`: Bytes, die nicht als Telegramm erkannt wurden (CRC-Fehler, Störungen), sowie Telegramme unbekannten Typs.
+Die Option *Lernprotokoll* (Reiter *Erweitert*, standardmäßig aus) schreibt Tagesdateien nach `iobroker-data/proxon-hesp.N/learn/`:
+- `changes_JJJJ-MM-TT.log`: jede Wertänderung eines Registers, je Zeile `ms-Zeitstempel R|W<Modul>:<DP hex>:<Sub> <Nutzdaten hex>`. Jede Datei beginnt mit dem vollständigen Stand.
+- `unknown_JJJJ-MM-TT.log`: Bytes, die nicht als Telegramm erkannt wurden (CRC-Fehler, Störungen), sowie Telegramme unbekannten Typs.
 
 Dateien, die älter als die eingestellte Anzahl Tage sind (Standard 90, 0 = unbegrenzt), werden gelöscht. Eine Tagesdatei hat typischerweise einige MB.
 
 ## Parameter lesen
 
-Der Knopf `Parameter_lesen` direkt unter der Instanz fragt nacheinander jedes konfigurierte Modul ab, zuerst das Lüftungsgerät:
+Der Knopf `paramRead.start` direkt unter der Instanz fragt nacheinander jedes konfigurierte Modul ab, zuerst das Lüftungsgerät:
 - **Name** (Meta `0x0001`)
-- **Verzeichnis** (Meta `0x0033` DP-Liste, `0x0034` Typ, `0x0038` Zugriff, `0x0039` Einheit), abgelegt unter `<Modul>.Meta`
-- **jeden Parameter** einmal, abgelegt unter `<Modul>.Parameter.DP_xxxx`. Zugriffsrecht und Rohdaten stehen in der Beschreibung des Datenpunkts.
+- **Verzeichnis** (Meta `0x0033` DP-Liste, `0x0034` Typ, `0x0038` Zugriff, `0x0039` Einheit), abgelegt unter `<Modul>.meta`
+- **jeden Parameter** einmal, abgelegt unter `<Modul>.parameters.DP_xxxx`. Zugriffsrecht und Rohdaten stehen in der Beschreibung des Datenpunkts.
 
 Es werden **nur Lese-Anfragen** gesendet, eine je Buslücke (ca. alle 12 s). Ein Durchlauf über alle Module dauert deshalb über eine Stunde. Den Stand zeigen diese Datenpunkte:
-- `Parameter_lesen_aktiv`
-- `Parameter_lesen_Fortschritt` (%)
-- `Parameter_lesen_Status`
-- `Parameter_lesen_zuletzt`
+- `paramRead.running`
+- `paramRead.progress` (%)
+- `paramRead.status`
+- `paramRead.lastRun`
 
 Meta-Listen liefern je Anfrage 64 Einträge ab dem Offset im Sub-Selektor. Das Gerät antwortet nur, solange Offset + 64 ≤ Listenlänge ist. Daraus wird die Länge ermittelt.
 
@@ -123,6 +131,15 @@ h0 h1 h2 | id (uint32 LE) | len (Nibbles) | Nutzdaten | CRC16 LE
 Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
+
+### 0.6.0 (in Vorbereitung)
+
+- (Bruch) Englische Objekt-IDs; bestehende Installationen werden beim ersten Start automatisch umgestellt (siehe „Umstieg von 0.5.x“)
+- Namen der Datenpunkte auf Englisch und Deutsch; Log-Meldungen, Ereignis- und Wertetexte auf Englisch
+- Lernprotokoll-Dateien umbenannt (`learn/changes_*`, `learn/unknown_*`)
+- Zeiteinstellungen werden im Code auf gültige Bereiche begrenzt
+- Schreibbare Datenpunkte abgeschalteter Optionen werden entfernt; fehlende Elternkanäle werden angelegt
+- README: Installation nur noch über das ioBroker-Repository; NOTICE.md auf Englisch
 
 ### 0.5.1 (2026-11-17)
 

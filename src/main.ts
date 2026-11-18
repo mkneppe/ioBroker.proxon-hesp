@@ -1,6 +1,6 @@
 /**
- * ioBroker-Adapter proxon-hesp
- * Liest den HESP-Bus einer Proxon P-Serie über ein RS485->TCP-Gateway passiv mit.
+ * ioBroker adapter proxon-hesp
+ * Listens passively to the HESP bus of a Proxon unit via an RS485 gateway or serial interface.
  */
 import * as utils from '@iobroker/adapter-core';
 import * as fs from 'node:fs';
@@ -9,6 +9,16 @@ import { autoDecode, decodeAs, decodeCalendar, decodeClock, encodeCalendar, type
 import { buildFrame, buildQuery, type Frame, FrameParser, FrameType, toHex } from './lib/hesp';
 import { type ConnType, createTransport, listSerialPorts, type Transport } from './lib/transport';
 import { decodeParam, PARAM_ACCESS, PARAM_NAMES, PARAM_UNITS, parseDpList, ROOM_PARAM_NAMES } from './lib/params';
+import {
+    fallbackFolder,
+    MAPPING_UPDATES,
+    migrateId,
+    NAMES,
+    renameModule,
+    renamePath,
+    tr,
+    type Translated,
+} from './lib/ids';
 
 interface ModuleCfg {
     address: number;
@@ -37,6 +47,21 @@ interface MappingCfg {
 }
 
 const isSet = (v: unknown): boolean => v !== undefined && v !== null && v !== '';
+
+/**
+ * Number from the configuration, limited to [min, max]; invalid or empty -> default
+ *
+ * @param v configured value
+ * @param def default
+ * @param min lower limit
+ * @param max upper limit
+ */
+const cfgNum = (v: unknown, def: number, min: number, max: number): number => {
+    const n = isSet(v) ? Number(v) : NaN;
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+};
+/** Largest delay setTimeout/setInterval accept (ms) */
+const MAX_TIMER_MS = 2147483647;
 
 interface Config {
     /** Datenquelle: TCP-Client zum Gateway, TCP-Server (Gateway verbindet sich) oder serielle Schnittstelle */
@@ -141,20 +166,20 @@ const UNIT_ADDR = 2;
 const META_PAGE = 64;
 
 /** Meta-Datenpunkte (Selbstauskunft der Module) */
-const META: Record<number, { name: string; text: boolean }> = {
-    0x0001: { name: 'Name', text: true },
-    0x0033: { name: 'DPListe', text: false },
-    0x0034: { name: 'Typcodes', text: false },
-    0x0038: { name: 'Zugriff', text: false },
-    0x0039: { name: 'Einheiten', text: false },
-    0x0130: { name: 'Fehlerstatus', text: true },
+const META: Record<number, { name: string; title: Translated; text: boolean }> = {
+    0x0001: { name: 'name', title: tr('Name', 'Name'), text: true },
+    0x0033: { name: 'dpList', title: tr('DP list', 'DP-Liste'), text: false },
+    0x0034: { name: 'typeCodes', title: tr('Type codes', 'Typcodes'), text: false },
+    0x0038: { name: 'access', title: tr('Access codes', 'Zugriffscodes'), text: false },
+    0x0039: { name: 'units', title: tr('Unit codes', 'Einheitencodes'), text: false },
+    0x0130: { name: 'errorStatus', title: tr('Error status', 'Fehlerstatus'), text: true },
 };
-const UNIT_CODES: Record<number, string> = { 5: 's', 8: '°C', 11: 'Text' };
+const UNIT_CODES: Record<number, string> = { 5: 's', 8: '°C', 11: 'text' };
 const ACCESS_CODES: Record<number, string> = {
-    0x55: 'nur lesen',
-    0xff: 'schreibbar',
-    0xd5: 'Fachmann schreibbar',
-    0xc0: 'Fachmann sichtbar',
+    0x55: 'read only',
+    0xff: 'writable',
+    0xd5: 'writable (installer)',
+    0xc0: 'visible (installer)',
 };
 
 /** Register, die innerhalb dieser Zeit nach dem Start auftauchen, gelten als „normaler Zyklus“ */
@@ -174,6 +199,8 @@ class ProxonHesp extends utils.Adapter {
     private moduleNames = new Map<number, string>();
     private mappings = new Map<string, MappingCfg[]>();
     private known = new Set<string>();
+    /** common of existing objects, removed after the first comparison in ensureObject */
+    private knownCommon = new Map<string, Partial<ioBroker.StateCommon>>();
     private pendingCreate = new Map<string, Promise<void>>();
     private lastWritten = new Map<string, { val: ioBroker.StateValue; ts: number }>();
     private queries = new Map<string, { id: number; count: number }>();
@@ -221,31 +248,39 @@ class ProxonHesp extends utils.Adapter {
         this.cfg.serialDataBits = ([5, 6, 7, 8] as const).find(b => b === Number(this.cfg.serialDataBits)) ?? 8;
         this.cfg.serialStopBits = Number(this.cfg.serialStopBits) === 2 ? 2 : 1;
         this.cfg.serialParity = (['none', 'even', 'odd'] as const).find(p => p === this.cfg.serialParity) ?? 'none';
-        this.cfg.watchdogSec = Number(this.cfg.watchdogSec) || 120;
-        this.cfg.refreshSec = Number(this.cfg.refreshSec) || 300;
-        this.cfg.captureMinutes = Number(this.cfg.captureMinutes) || 15;
-        this.cfg.eventLimit = Number(this.cfg.eventLimit) || 100;
-        this.cfg.learnLogDays = Math.max(0, Number(this.cfg.learnLogDays ?? 90) || 0);
+        // all timer settings are limited so that every derived delay stays below MAX_TIMER_MS
+        this.cfg.watchdogSec = cfgNum(this.cfg.watchdogSec, 120, 10, 86400);
+        this.cfg.refreshSec = cfgNum(this.cfg.refreshSec, 300, 10, 86400);
+        this.cfg.captureMinutes = cfgNum(this.cfg.captureMinutes, 15, 1, 1440);
+        this.cfg.eventLimit = Math.round(cfgNum(this.cfg.eventLimit, 100, 1, 1000));
+        this.cfg.learnLogDays = Math.round(cfgNum(this.cfg.learnLogDays, 90, 0, 3650));
+        this.cfg.pollMinutes = cfgNum(this.cfg.pollMinutes, 60, 5, 1440);
+
+        // IDs before 0.6.0 were German: migrate configuration and objects once (restarts the adapter if needed)
+        if (await this.migrateToEnglishIds()) {
+            return;
+        }
+
         if (this.cfg.learnLog) {
-            this.parser.onJunk = junk => this.learnWrite('unbekannt', `${Date.now()} ${junk.toString('hex')}`);
+            this.parser.onJunk = junk => this.learnWrite('unknown', `${Date.now()} ${junk.toString('hex')}`);
             this.learnCleanup();
             this.learnCleanupTimer = this.setInterval(() => this.learnCleanup(), 6 * 3600e3);
-            this.log.info(`Lernprotokoll aktiv: ${path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen')}`);
+            this.log.info(`Learning log active: ${this.learnDir()}`);
         }
 
         await this.setState('info.connection', false, true);
         if (this.cfg.connType === 'tcp' && !this.cfg.host) {
-            this.log.error('Kein Gateway (Host) konfiguriert');
+            this.log.error('No gateway (host) configured');
             return;
         }
         if (this.cfg.connType === 'serial' && !this.cfg.serialPath) {
-            this.log.error('Keine serielle Schnittstelle konfiguriert');
+            this.log.error('No serial interface configured');
             return;
         }
 
         for (const m of this.cfg.modules || []) {
             if (m && m.name !== undefined && m.address !== undefined) {
-                this.moduleNames.set(Number(m.address), this.cleanId(String(m.name)) || `Modul_${m.address}`);
+                this.moduleNames.set(Number(m.address), this.cleanId(String(m.name)) || fallbackFolder(m.address));
             }
         }
         for (const m of this.cfg.mappings || []) {
@@ -268,16 +303,23 @@ class ProxonHesp extends utils.Adapter {
 
         // bereits vorhandene Objekte merken (keine Neuanlage, keine „neu“-Ereignisse)
         const objs = await this.getAdapterObjectsAsync();
-        for (const id of Object.keys(objs)) {
-            this.known.add(id.substring(this.namespace.length + 1));
+        for (const [id, o] of Object.entries(objs)) {
+            const rel = id.substring(this.namespace.length + 1);
+            this.known.add(rel);
+            const c = o.common as Partial<ioBroker.StateCommon>;
+            this.knownCommon.set(rel, { name: c.name, unit: c.unit, states: c.states });
         }
+        await this.removeDisabledControls();
         await this.restoreMeta();
         await this.restoreEvents();
 
         await this.ensureObject('info.capture', {
             type: 'state',
             common: {
-                name: `Telegramm-Mitschnitt in Datei (${this.cfg.captureMinutes} min)`,
+                name: tr(
+                    `Capture telegrams to a file (${this.cfg.captureMinutes} min)`,
+                    `Telegramm-Mitschnitt in Datei (${this.cfg.captureMinutes} min)`,
+                ),
                 type: 'boolean',
                 role: 'switch',
                 read: true,
@@ -289,8 +331,8 @@ class ProxonHesp extends utils.Adapter {
         this.subscribeStates('info.capture');
 
         if (this.cfg.allowWrite) {
-            this.cfg.writeMin = Number(this.cfg.writeMin) || 15;
-            this.cfg.writeMax = Number(this.cfg.writeMax) || 28;
+            this.cfg.writeMin = cfgNum(this.cfg.writeMin, 15, 5, 35);
+            this.cfg.writeMax = cfgNum(this.cfg.writeMax, 28, 5, 35);
             this.cfg.writeStep = Number(this.cfg.writeStep) === 0.5 ? 0.5 : 1;
             for (const s of String(this.cfg.controlModules || '').split(',')) {
                 const n = Number(s.trim());
@@ -300,10 +342,13 @@ class ProxonHesp extends utils.Adapter {
             }
             for (const mod of this.controlMods) {
                 await this.ensureModule(mod);
-                await this.ensureObject(`${this.moduleFolder(mod)}.Sollwert`, {
+                await this.ensureObject(`${this.moduleFolder(mod)}.setpoint`, {
                     type: 'state',
                     common: {
-                        name: 'Sollwert (schreibbar, wird als SET 0x01FB an das Raummodul gesendet)',
+                        name: tr(
+                            'Setpoint (writable, sent as SET 0x01FB to the room module)',
+                            'Sollwert (schreibbar, wird als SET 0x01FB an das Raummodul gesendet)',
+                        ),
                         type: 'number',
                         role: 'level.temperature',
                         unit: '°C',
@@ -315,22 +360,25 @@ class ProxonHesp extends utils.Adapter {
                     },
                 });
                 // Schrittweite auch bei bestehenden Objekten aktualisieren
-                await this.extendObjectAsync(`${this.moduleFolder(mod)}.Sollwert`, {
-                    common: { step: this.cfg.writeStep },
+                await this.extendObjectAsync(`${this.moduleFolder(mod)}.setpoint`, {
+                    common: { min: this.cfg.writeMin, max: this.cfg.writeMax, step: this.cfg.writeStep },
                 });
-                this.subscribeStates(`${this.moduleFolder(mod)}.Sollwert`);
+                this.subscribeStates(`${this.moduleFolder(mod)}.setpoint`);
             }
             this.log.info(
-                `Schreiben aktiv für Raummodule ${[...this.controlMods].join(', ')} (${this.cfg.writeMin}–${this.cfg.writeMax} °C, Schritt ${this.cfg.writeStep} °C)`,
+                `Writing enabled for room modules ${[...this.controlMods].join(', ')} (${this.cfg.writeMin}–${this.cfg.writeMax} °C, step ${this.cfg.writeStep} °C)`,
             );
             if (this.cfg.allowHeaterWrite) {
                 for (const mod of this.controlMods) {
                     this.heaterMods.add(mod);
-                    const id = `${this.moduleFolder(mod)}.Heizelement_freigeben`;
+                    const id = `${this.moduleFolder(mod)}.heaterEnable`;
                     await this.ensureObject(id, {
                         type: 'state',
                         common: {
-                            name: 'Heizelement freigeben (schreibbar, wird als SET 0x0196 an das Raummodul gesendet)',
+                            name: tr(
+                                'Enable electric heater (writable, sent as SET 0x0196 to the room module)',
+                                'Heizelement freigeben (schreibbar, wird als SET 0x0196 an das Raummodul gesendet)',
+                            ),
                             type: 'boolean',
                             role: 'switch',
                             read: true,
@@ -339,16 +387,20 @@ class ProxonHesp extends utils.Adapter {
                     });
                     this.subscribeStates(id);
                 }
-                this.log.info(`Heizelement schaltbar für Raummodule ${[...this.heaterMods].join(', ')}`);
+                this.log.info(`Electric heater switchable for room modules ${[...this.heaterMods].join(', ')}`);
             }
         }
         if (this.cfg.allowWrite && this.cfg.allowClockWrite) {
             this.cfg.clockOffsetMin = Math.round(Number(this.cfg.clockOffsetMin) || 0);
             await this.ensureModule(UNIT_ADDR);
+            await this.ensureParents(this.clockButtonId());
             await this.ensureObject(this.clockButtonId(), {
                 type: 'state',
                 common: {
-                    name: 'Uhr des Lüftungsgeräts auf Systemzeit + Versatz (Einstellungen) stellen',
+                    name: tr(
+                        'Set the clock of the ventilation unit to system time + offset (settings)',
+                        'Uhr des Lüftungsgeräts auf Systemzeit + Versatz (Einstellungen) stellen',
+                    ),
                     type: 'boolean',
                     role: 'button',
                     read: false,
@@ -360,7 +412,7 @@ class ProxonHesp extends utils.Adapter {
 
         await this.setupParameters();
 
-        this.setInterval(() => this.flushStats(), this.cfg.refreshSec * 1000);
+        this.setInterval(() => this.flushStats(), Math.min(this.cfg.refreshSec * 1000, MAX_TIMER_MS));
         this.setInterval(() => this.hourly(), 60 * 60 * 1000);
         this.setInterval(() => this.watchdog(), 30 * 1000);
 
@@ -437,7 +489,7 @@ class ProxonHesp extends utils.Adapter {
         if (this.stopping || this.reconnectTimer) {
             return;
         }
-        const msg = `Verbindung getrennt (${reason}), neuer Versuch in ${Math.round(this.backoffMs / 1000)} s`;
+        const msg = `Connection lost (${reason}), retrying in ${Math.round(this.backoffMs / 1000)} s`;
         this.backoffMs >= 30000 ? this.log.warn(msg) : this.log.info(msg);
         this.reconnectTimer = this.setTimeout(() => {
             this.reconnectTimer = undefined;
@@ -448,8 +500,8 @@ class ProxonHesp extends utils.Adapter {
 
     private watchdog(): void {
         if (this.sock && Date.now() - this.lastValid > this.cfg.watchdogSec * 1000) {
-            this.log.warn(`Seit ${this.cfg.watchdogSec} s keine gültigen Telegramme – baue Verbindung neu auf`);
-            this.lost('Watchdog');
+            this.log.warn(`No valid telegrams for ${this.cfg.watchdogSec} s – reconnecting`);
+            this.lost('watchdog');
         }
     }
 
@@ -473,7 +525,7 @@ class ProxonHesp extends utils.Adapter {
             try {
                 this.onFrame(f);
             } catch (e) {
-                this.log.warn(`Fehler bei Telegramm ${toHex(f.raw)}: ${(e as Error).message}`);
+                this.log.warn(`Error processing telegram ${toHex(f.raw)}: ${(e as Error).message}`);
             }
         }
     }
@@ -522,7 +574,7 @@ class ProxonHesp extends utils.Adapter {
                 this.queries.delete(key);
                 const count = q && q.id === f.id ? q.count : 0;
                 if (META[f.dp]) {
-                    void this.handleMeta(f.src, f, count);
+                    void this.handleMeta(f.src, f);
                 } else {
                     void this.handleValue('R', f.src, f, count);
                 }
@@ -554,7 +606,7 @@ class ProxonHesp extends utils.Adapter {
                 ) {
                     this.writeQueue.shift();
                     this.log.info(
-                        `Uhr des Lüftungsgeräts gestellt (${this.clockLabel(wj)}, quittiert nach ${Date.now() - wj.sentAt} ms)`,
+                        `Clock of the ventilation unit set (${this.clockLabel(wj)}, acknowledged after ${Date.now() - wj.sentAt} ms)`,
                     );
                     return;
                 }
@@ -568,7 +620,7 @@ class ProxonHesp extends utils.Adapter {
                     [0x0199, 0x01fb, 0x0196].includes(f.dp)
                 ) {
                     this.log.debug(
-                        `Modul ${this.moduleFolder(wj.mod)} quittiert SET 0x${f.dp.toString(16).padStart(4, '0')} (${Date.now() - wj.sentAt} ms)`,
+                        `Module ${this.moduleFolder(wj.mod)} acknowledged SET 0x${f.dp.toString(16).padStart(4, '0')} (${Date.now() - wj.sentAt} ms)`,
                     );
                 }
                 return;
@@ -581,7 +633,7 @@ class ProxonHesp extends utils.Adapter {
     /* ------------------------------------------------------------- Werte */
 
     private moduleFolder(mod: number): string {
-        return this.moduleNames.get(mod) || `Modul_${mod}`;
+        return this.moduleNames.get(mod) || fallbackFolder(mod);
     }
 
     private async handleValue(kind: 'R' | 'W', mod: number, f: Frame, count: number): Promise<void> {
@@ -606,7 +658,7 @@ class ProxonHesp extends utils.Adapter {
                     continue;
                 }
             }
-            // Name mit führendem "/" wird ab der Instanzwurzel angelegt (z. B. "/Wohnen.Temperatur")
+            // a name with a leading "/" is created from the instance root (e.g. "/controlPanelRoom.temperature")
             const id = m.name.startsWith('/') ? this.cleanPath(m.name.slice(1)) : `${folder}.${this.cleanPath(m.name)}`;
             const states = m.states
                 ? Object.fromEntries(
@@ -617,11 +669,11 @@ class ProxonHesp extends utils.Adapter {
                   )
                 : undefined;
             const vt = typeof v === 'boolean' ? 'boolean' : typeof v === 'number' ? 'number' : 'string';
-            await this.ensureParents(id, m.name.startsWith('/') ? 1 : 2);
+            await this.ensureParents(id, m.name.startsWith('/') ? 1 : 2, m.name.startsWith('/') ? '/' : '');
             await this.ensureObject(id, {
                 type: 'state',
                 common: {
-                    name: m.name,
+                    name: NAMES[m.name] || m.name,
                     type: vt,
                     role:
                         vt === 'boolean'
@@ -663,12 +715,20 @@ class ProxonHesp extends utils.Adapter {
     private async storeRegister(kind: 'R' | 'W', mod: number, f: Frame, count: number): Promise<void> {
         const folder = this.moduleFolder(mod);
         const regName = `${kind}_${f.dp}${f.sub ? `_${f.sub}` : ''}`;
-        const base = `${folder}.Register.${regName}`;
+        const base = `${folder}.registers.${regName}`;
         const isNew = !this.known.has(base);
-        const desc = `Modul ${mod} ${kind === 'R' ? 'liest' : 'erhält'} DP ${f.dp} (0x${f.dp.toString(16).padStart(4, '0')})${f.sub ? ` Sub ${f.sub}` : ''}`;
+        const hex = `0x${f.dp.toString(16).padStart(4, '0')}`;
+        const sub = f.sub ? ` sub ${f.sub}` : '';
+        const desc = tr(
+            `Module ${mod} ${kind === 'R' ? 'reports' : 'receives'} DP ${f.dp} (${hex})${sub}`,
+            `Modul ${mod} ${kind === 'R' ? 'liest' : 'erhält'} DP ${f.dp} (${hex})${sub}`,
+        );
 
         if (isNew) {
-            await this.ensureChannel(`${folder}.Register`, 'Alle mitgelesenen Register');
+            await this.ensureChannel(
+                `${folder}.registers`,
+                tr('All registers seen on the bus', 'Alle mitgelesenen Register'),
+            );
             await this.ensureChannel(base, desc);
         }
         const d = autoDecode(f.payload, count);
@@ -676,7 +736,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(`${base}.value`, {
             type: 'state',
             common: {
-                name: `${desc} – Wert (automatisch gedeutet)`,
+                name: tr(`${desc.en} – value (auto-decoded)`, `${desc.de} – Wert (automatisch gedeutet)`),
                 type: d.kind === 'number' ? 'number' : 'string',
                 role: d.kind === 'number' ? 'value' : d.kind === 'list' ? 'json' : 'text',
                 unit,
@@ -686,18 +746,27 @@ class ProxonHesp extends utils.Adapter {
         });
         await this.ensureObject(`${base}.raw`, {
             type: 'state',
-            common: { name: `${desc} – Rohdaten (hex)`, type: 'string', role: 'text', read: true, write: false },
+            common: {
+                name: tr(`${desc.en} – raw data (hex)`, `${desc.de} – Rohdaten (hex)`),
+                type: 'string',
+                role: 'text',
+                read: true,
+                write: false,
+            },
         });
-        // Typwechsel (z. B. Zahl -> Text) erkennen und Objekt anpassen
+        // detect a type change (e.g. number -> text) and adapt type and role
         const val = d.value === null ? '' : d.value;
         const prev = this.lastWritten.get(`${base}.value`);
         if (prev && typeof prev.val !== typeof val) {
             await this.extendObject(`${base}.value`, {
-                common: { type: typeof val === 'number' ? 'number' : 'string' },
+                common:
+                    typeof val === 'number'
+                        ? { type: 'number', role: 'value' }
+                        : { type: 'string', role: d.kind === 'list' ? 'json' : 'text' },
             });
         }
         if (d.kind === 'text' && prev && prev.val !== val) {
-            this.addEvent(`${folder} ${regName}: Text geändert auf „${val}“`);
+            this.addEvent(`${folder} ${regName}: text changed to "${val}"`);
         }
         await this.write(`${base}.value`, val);
         await this.write(`${base}.raw`, toHex(f.payload));
@@ -711,21 +780,30 @@ class ProxonHesp extends utils.Adapter {
             await this.ensureStatObjects(base, desc);
             if (Date.now() - this.startedAt > STARTUP_GRACE_MS) {
                 this.addEvent(
-                    `Neues Register ${folder} ${regName} = ${d.kind === 'empty' ? '(leer)' : val} [${toHex(f.payload)}]`,
+                    `New register ${folder} ${regName} = ${d.kind === 'empty' ? '(empty)' : val} [${toHex(f.payload)}]`,
                 );
             }
         }
     }
 
-    private async ensureStatObjects(base: string, desc: string): Promise<void> {
+    private async ensureStatObjects(base: string, desc: Translated): Promise<void> {
         await this.ensureObject(`${base}.lastSeen`, {
             type: 'state',
-            common: { name: `${desc} – zuletzt gesehen`, type: 'number', role: 'date', read: true, write: false },
+            common: {
+                name: tr(`${desc.en} – last seen`, `${desc.de} – zuletzt gesehen`),
+                type: 'number',
+                role: 'date',
+                read: true,
+                write: false,
+            },
         });
         await this.ensureObject(`${base}.count`, {
             type: 'state',
             common: {
-                name: `${desc} – Anzahl Telegramme seit Adapterstart`,
+                name: tr(
+                    `${desc.en} – telegrams since adapter start`,
+                    `${desc.de} – Anzahl Telegramme seit Adapterstart`,
+                ),
                 type: 'number',
                 role: 'value',
                 read: true,
@@ -745,7 +823,7 @@ class ProxonHesp extends utils.Adapter {
         void this.ensureObject('info.framesPerHour', {
             type: 'state',
             common: {
-                name: 'Gültige Telegramme (letzte Stunde)',
+                name: tr('Valid telegrams (last hour)', 'Gültige Telegramme (letzte Stunde)'),
                 type: 'number',
                 role: 'value',
                 read: true,
@@ -755,7 +833,7 @@ class ProxonHesp extends utils.Adapter {
         void this.ensureObject('info.skippedBytesPerHour', {
             type: 'state',
             common: {
-                name: 'Verworfene Bytes / CRC-Fehler (letzte Stunde)',
+                name: tr('Discarded bytes / CRC errors (last hour)', 'Verworfene Bytes / CRC-Fehler (letzte Stunde)'),
                 type: 'number',
                 role: 'value',
                 read: true,
@@ -768,11 +846,14 @@ class ProxonHesp extends utils.Adapter {
 
     /* ------------------------------------------------------------- Meta */
 
-    private async handleMeta(mod: number, f: Frame, count: number): Promise<void> {
+    private async handleMeta(mod: number, f: Frame): Promise<void> {
         const def = META[f.dp];
-        const folder = `${this.moduleFolder(mod)}.Meta`;
+        const folder = `${this.moduleFolder(mod)}.meta`;
         await this.ensureModule(mod);
-        await this.ensureChannel(folder, 'Selbstauskunft des Moduls (Meta-Datenpunkte)');
+        await this.ensureChannel(
+            folder,
+            tr('Self-description of the module (meta DPs)', 'Selbstauskunft des Moduls (Meta-Datenpunkte)'),
+        );
         const id = `${folder}.${def.name}`;
         if (def.text) {
             // Text mit führendem Längenbyte (z. B. 0x0E „LQS-CO2RH…“)
@@ -784,24 +865,24 @@ class ProxonHesp extends utils.Adapter {
                 .toString('latin1')
                 .replace(/\0[\s\S]*$/, '')
                 .trim();
-            await this.ensureObject(`${id}_raw`, {
+            await this.ensureObject(`${id}Raw`, {
                 type: 'state',
                 common: {
-                    name: `${def.name} – Rohdaten (hex)`,
+                    name: tr(`${def.title.en} – raw data (hex)`, `${def.title.de} – Rohdaten (hex)`),
                     type: 'string',
                     role: 'text',
                     read: true,
                     write: false,
                 },
             });
-            await this.write(`${id}_raw`, toHex(f.payload), true);
+            await this.write(`${id}Raw`, toHex(f.payload), true);
             await this.ensureObject(id, {
                 type: 'state',
-                common: { name: def.name, type: 'string', role: 'text', read: true, write: false },
+                common: { name: def.title, type: 'string', role: 'text', read: true, write: false },
             });
             const prev = (await this.getStateAsync(id))?.val;
             if (prev !== txt) {
-                this.addEvent(`${this.moduleFolder(mod)}: ${def.name} = „${txt}“`);
+                this.addEvent(`${this.moduleFolder(mod)}: ${def.name} = "${txt}"`);
             }
             await this.write(id, txt, true);
             return;
@@ -814,10 +895,15 @@ class ProxonHesp extends utils.Adapter {
         for (let i = 0; i * size + size <= f.payload.length; i++) {
             merged[f.sub + i] = f.payload.readUInt16LE(i * size);
         }
-        void count;
         await this.ensureObject(id, {
             type: 'state',
-            common: { name: `${def.name} (Liste)`, type: 'string', role: 'json', read: true, write: false },
+            common: {
+                name: tr(`${def.title.en} (list)`, `${def.title.de} (Liste)`),
+                type: 'string',
+                role: 'json',
+                read: true,
+                write: false,
+            },
         });
         await this.write(id, JSON.stringify(Array.from(merged, v => v ?? null)), true);
         await this.buildDirectory(mod);
@@ -829,24 +915,24 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private async buildDirectory(mod: number): Promise<void> {
-        const dps = this.joinMeta(mod, 'DPListe');
+        const dps = this.joinMeta(mod, 'dpList');
         if (!dps) {
             return;
         }
-        const types = this.joinMeta(mod, 'Typcodes');
-        const acc = this.joinMeta(mod, 'Zugriff');
-        const units = this.joinMeta(mod, 'Einheiten');
+        const types = this.joinMeta(mod, 'typeCodes');
+        const acc = this.joinMeta(mod, 'access');
+        const units = this.joinMeta(mod, 'units');
         const dir = dps.map((dp, i) => ({
             dp: `0x${dp.toString(16).padStart(4, '0')}`,
-            typ: types ? types[i] : undefined,
-            zugriff: acc ? ACCESS_CODES[acc[i]] || acc[i] : undefined,
-            einheit: units ? UNIT_CODES[units[i]] || units[i] : undefined,
+            type: types ? types[i] : undefined,
+            access: acc ? ACCESS_CODES[acc[i]] || acc[i] : undefined,
+            unit: units ? UNIT_CODES[units[i]] || units[i] : undefined,
         }));
-        const id = `${this.moduleFolder(mod)}.Meta.Verzeichnis`;
+        const id = `${this.moduleFolder(mod)}.meta.directory`;
         await this.ensureObject(id, {
             type: 'state',
             common: {
-                name: 'DP-Verzeichnis (aus Meta-Datenpunkten)',
+                name: tr('DP directory (from the meta DPs)', 'DP-Verzeichnis (aus Meta-Datenpunkten)'),
                 type: 'string',
                 role: 'json',
                 read: true,
@@ -857,21 +943,21 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private unitFromMeta(mod: number, dp: number): string | undefined {
-        const dps = this.joinMeta(mod, 'DPListe');
-        const units = this.joinMeta(mod, 'Einheiten');
+        const dps = this.joinMeta(mod, 'dpList');
+        const units = this.joinMeta(mod, 'units');
         if (!dps || !units) {
             return undefined;
         }
         const i = dps.indexOf(dp);
         const u = i >= 0 ? units[i] : undefined;
-        return u !== undefined && UNIT_CODES[u] && UNIT_CODES[u] !== 'Text' ? UNIT_CODES[u] : undefined;
+        return u !== undefined && UNIT_CODES[u] && UNIT_CODES[u] !== 'text' ? UNIT_CODES[u] : undefined;
     }
 
     /** Meta-Listen aus gespeicherten States wiederherstellen */
     private async restoreMeta(): Promise<void> {
-        const states = await this.getStatesAsync('*.Meta.*');
+        const states = await this.getStatesAsync('*.meta.*');
         for (const [fullId, st] of Object.entries(states || {})) {
-            const m = fullId.match(/^[^.]+\.\d+\.([^.]+)\.Meta\.([A-Za-z]+)$/);
+            const m = fullId.match(/^[^.]+\.\d+\.([^.]+)\.meta\.([A-Za-z]+)$/);
             if (!m || !st || typeof st.val !== 'string') {
                 continue;
             }
@@ -880,7 +966,7 @@ class ProxonHesp extends utils.Adapter {
                 continue;
             }
             const mod =
-                [...this.moduleNames.entries()].find(([, n]) => n === m[1])?.[0] ?? Number(m[1].replace('Modul_', ''));
+                [...this.moduleNames.entries()].find(([, n]) => n === m[1])?.[0] ?? Number(m[1].replace('module', ''));
             if (!Number.isFinite(mod)) {
                 continue;
             }
@@ -900,7 +986,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject('info.events', {
             type: 'state',
             common: {
-                name: 'Seltene Ereignisse (neue Register, Texte, Meta)',
+                name: tr('Rare events (new registers, texts, meta)', 'Seltene Ereignisse (neue Register, Texte, Meta)'),
                 type: 'string',
                 role: 'json',
                 read: true,
@@ -911,7 +997,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject('info.lastEvent', {
             type: 'state',
             common: {
-                name: 'Letztes seltenes Ereignis',
+                name: tr('Last rare event', 'Letztes seltenes Ereignis'),
                 type: 'string',
                 role: 'text',
                 read: true,
@@ -928,7 +1014,7 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private addEvent(text: string): void {
-        this.log.info(`Ereignis: ${text}`);
+        this.log.info(`Event: ${text}`);
         this.events.unshift({ ts: new Date().toISOString(), text });
         this.events = this.events.slice(0, this.cfg.eventLimit);
         void this.setState('info.events', JSON.stringify(this.events), true);
@@ -945,7 +1031,7 @@ class ProxonHesp extends utils.Adapter {
             state.val ? this.startCapture() : this.stopCapture(true);
             return;
         }
-        if (id.endsWith('.Sollwert')) {
+        if (id.endsWith('.setpoint')) {
             this.requestSetpoint(id, state.val);
             return;
         }
@@ -955,11 +1041,11 @@ class ProxonHesp extends utils.Adapter {
             }
             return;
         }
-        if (id.endsWith('.Heizelement_freigeben')) {
+        if (id.endsWith('.heaterEnable')) {
             this.requestHeater(id, state.val);
             return;
         }
-        if (id === `${this.namespace}.Parameter_lesen` && state.val) {
+        if (id === `${this.namespace}.paramRead.start` && state.val) {
             void this.readParameters();
         }
     }
@@ -967,17 +1053,17 @@ class ProxonHesp extends utils.Adapter {
     /* ------------------------------------------------------------- Sollwert schreiben */
 
     private requestSetpoint(id: string, val: ioBroker.StateValue): void {
-        const rel = id.substring(this.namespace.length + 1).replace(/\.Sollwert$/, '');
+        const rel = id.substring(this.namespace.length + 1).replace(/\.setpoint$/, '');
         const mod = [...this.controlMods].find(m => this.moduleFolder(m) === rel);
         const step = this.cfg.writeStep;
         const value = Math.round(Number(val) / step) * step;
         if (mod === undefined || !Number.isFinite(value)) {
-            this.log.warn(`Ungültiger Sollwert-Auftrag ${id} = ${val}`);
+            this.log.warn(`Invalid setpoint request ${id} = ${val}`);
             return;
         }
         if (value < this.cfg.writeMin || value > this.cfg.writeMax) {
             this.log.warn(
-                `Sollwert ${value} °C für ${rel} außerhalb ${this.cfg.writeMin}–${this.cfg.writeMax} °C – ignoriert`,
+                `Setpoint ${value} °C for ${rel} outside ${this.cfg.writeMin}–${this.cfg.writeMax} °C – ignored`,
             );
             this.restoreSetpoint(mod);
             return;
@@ -992,31 +1078,31 @@ class ProxonHesp extends utils.Adapter {
             sentAt: 0,
             notBefore: Date.now() + SETPOINT_SETTLE_MS,
         });
-        this.log.info(`Sollwert-Auftrag ${rel} (Modul ${mod}) = ${value} °C eingereiht`);
+        this.log.info(`Setpoint request ${rel} (module ${mod}) = ${value} °C queued`);
     }
 
     private clockButtonId(): string {
-        return `${this.moduleFolder(UNIT_ADDR)}.Geraet.Uhr_stellen`;
+        return `${this.moduleFolder(UNIT_ADDR)}.device.setClock`;
     }
 
     private clockLabel(job: WriteJob): string {
-        const t = job.clockSent ? new Date(job.clockSent).toLocaleString('de-DE') : '?';
-        return `${t}${job.value ? `, Versatz ${job.value > 0 ? '+' : ''}${job.value} min` : ''}`;
+        const t = job.clockSent ? new Date(job.clockSent).toLocaleString() : '?';
+        return `${t}${job.value ? `, offset ${job.value > 0 ? '+' : ''}${job.value} min` : ''}`;
     }
 
     private requestClock(offsetMin: number): boolean {
         if (!this.cfg.allowWrite || !this.cfg.allowClockWrite) {
-            this.log.warn('Uhr stellen ist nicht freigegeben (Einstellungen: Schreiben + Uhr stellen erlauben)');
+            this.log.warn('Setting the clock is not enabled (settings: allow writing + allow setting the clock)');
             return false;
         }
         const value = Math.round(Number(offsetMin) || 0);
         if (Math.abs(value) > 24 * 60) {
-            this.log.warn(`Uhr-Versatz ${value} min zu groß – ignoriert`);
+            this.log.warn(`Clock offset ${value} min too large – ignored`);
             return false;
         }
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'clock' || j.sentAt !== 0);
         this.writeQueue.push({ kind: 'clock', mod: UNIT_ADDR, value, tries: 0, sentAt: 0 });
-        this.log.info(`Auftrag Uhr stellen (Versatz ${value} min) eingereiht`);
+        this.log.info(`Clock request (offset ${value} min) queued`);
         return true;
     }
 
@@ -1041,10 +1127,10 @@ class ProxonHesp extends utils.Adapter {
                 obj.command,
                 ok
                     ? {
-                          result: `Auftrag eingereiht: Uhr = Systemzeit ${offset ? `${offset > 0 ? '+' : ''}${offset} min` : ''} (Ergebnis im Log)`,
+                          result: `Request queued: clock = system time ${offset ? `${offset > 0 ? '+' : ''}${offset} min` : ''} (result in the log)`,
                       }
                     : {
-                          error: 'Uhr stellen nicht möglich – Schreiben und „Uhr stellen erlauben“ aktivieren und speichern',
+                          error: 'Setting the clock is not possible – enable "allow writing" and "allow setting the clock" and save',
                       },
                 obj.callback,
             );
@@ -1052,16 +1138,16 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private requestHeater(id: string, val: ioBroker.StateValue): void {
-        const rel = id.substring(this.namespace.length + 1).replace(/\.Heizelement_freigeben$/, '');
+        const rel = id.substring(this.namespace.length + 1).replace(/\.heaterEnable$/, '');
         const mod = [...this.heaterMods].find(m => this.moduleFolder(m) === rel);
         if (mod === undefined || (typeof val !== 'boolean' && val !== 0 && val !== 1)) {
-            this.log.warn(`Ungültiger Heizelement-Auftrag ${id} = ${val}`);
+            this.log.warn(`Invalid heater request ${id} = ${val}`);
             return;
         }
         const value = val ? 1 : 0;
         this.writeQueue = this.writeQueue.filter(j => j.kind !== 'heater' || j.mod !== mod || j.sentAt !== 0);
         this.writeQueue.push({ kind: 'heater', mod, value, tries: 0, sentAt: 0 });
-        this.log.info(`Heizelement-Auftrag ${rel} (Modul ${mod}) = ${value ? 'freigeben' : 'sperren'} eingereiht`);
+        this.log.info(`Heater request ${rel} (module ${mod}) = ${value ? 'enable' : 'disable'} queued`);
     }
 
     /**
@@ -1080,10 +1166,8 @@ class ProxonHesp extends utils.Adapter {
             if (++this.queryFailStreak >= QUERY_FAIL_RECONNECT) {
                 // beobachtet: Gateway nahm Anfragen an, sendete sie aber nicht auf den Bus, bis die Verbindung neu aufgebaut war
                 this.queryFailStreak = 0;
-                this.log.info(
-                    `${QUERY_FAIL_RECONNECT} Anfragen in Folge unbeantwortet – baue Verbindung zum Gateway neu auf`,
-                );
-                this.lost('keine Antworten auf Anfragen');
+                this.log.info(`${QUERY_FAIL_RECONNECT} queries in a row unanswered – reconnecting to the gateway`);
+                this.lost('no replies to queries');
                 return;
             }
             if (q.tries >= q.maxTries) {
@@ -1138,12 +1222,12 @@ class ProxonHesp extends utils.Adapter {
             if (job.tries >= WRITE_MAX_TRIES) {
                 this.writeQueue.shift();
                 if (job.kind === 'clock') {
-                    this.log.warn('Uhr stellen nicht quittiert – aufgegeben');
+                    this.log.warn('Clock setting not acknowledged – giving up');
                 } else if (job.kind === 'heater') {
-                    this.log.warn(`Heizelement-Freigabe ${job.value} an Modul ${job.mod} nicht bestätigt – aufgegeben`);
+                    this.log.warn(`Heater enable ${job.value} for module ${job.mod} not confirmed – giving up`);
                     this.restoreHeater(job.mod);
                 } else {
-                    this.log.warn(`Sollwert ${job.value} °C an Modul ${job.mod} nicht bestätigt – aufgegeben`);
+                    this.log.warn(`Setpoint ${job.value} °C for module ${job.mod} not confirmed – giving up`);
                     this.restoreSetpoint(job.mod);
                 }
                 return false;
@@ -1177,7 +1261,7 @@ class ProxonHesp extends utils.Adapter {
                 job.sentAt = Date.now();
                 job.clockSent = minute;
                 job.tries++;
-                this.log.debug(`SET 0x032E = ${decodeCalendar(p)} gesendet (Versuch ${job.tries})`);
+                this.log.debug(`SET 0x032E = ${decodeCalendar(p)} sent (try ${job.tries})`);
                 return true;
             }
             // Formate wie vom zentralen Bedienelement (BDE) gesendet: 0x01FB float32, 0x0196 uint16 (0/1)
@@ -1188,7 +1272,7 @@ class ProxonHesp extends utils.Adapter {
             job.sentAt = Date.now();
             job.tries++;
             this.log.debug(
-                `SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} an Modul ${job.mod} gesendet (Versuch ${job.tries})`,
+                `SET 0x${dp.toString(16).padStart(4, '0')} = ${job.value} sent to module ${job.mod} (try ${job.tries})`,
             );
             return true;
         }
@@ -1202,11 +1286,11 @@ class ProxonHesp extends utils.Adapter {
         if (job && job.kind === 'setpoint' && job.mod === mod && job.sentAt && Math.abs(job.value - value) < 0.05) {
             this.writeQueue.shift();
             confirmed = true;
-            this.log.info(`Sollwert ${value} °C von ${this.moduleFolder(mod)} bestätigt`);
+            this.log.info(`Setpoint ${value} °C confirmed by ${this.moduleFolder(mod)}`);
         }
         // solange ein Auftrag für dieses Modul aussteht, den gewünschten Wert nicht überschreiben
         if (!this.writeQueue.some(j => j.kind === 'setpoint' && j.mod === mod)) {
-            await this.write(`${this.moduleFolder(mod)}.Sollwert`, value, confirmed);
+            await this.write(`${this.moduleFolder(mod)}.setpoint`, value, confirmed);
         }
     }
 
@@ -1223,33 +1307,33 @@ class ProxonHesp extends utils.Adapter {
         if (job && job.kind === 'heater' && job.mod === mod && job.sentAt && (job.value === 1) === on) {
             this.writeQueue.shift();
             confirmed = true;
-            this.log.info(`Heizelement ${this.moduleFolder(mod)} ${on ? 'freigegeben' : 'gesperrt'} (bestätigt)`);
+            this.log.info(`Heater ${this.moduleFolder(mod)} ${on ? 'enabled' : 'disabled'} (confirmed)`);
         }
         if (!this.writeQueue.some(j => j.kind === 'heater' && j.mod === mod)) {
-            await this.write(`${this.moduleFolder(mod)}.Heizelement_freigeben`, on, confirmed);
+            await this.write(`${this.moduleFolder(mod)}.heaterEnable`, on, confirmed);
         }
     }
 
     private restoreHeater(mod: number): void {
         const v = this.reportedHeater.get(mod);
         if (v !== undefined) {
-            void this.setState(`${this.moduleFolder(mod)}.Heizelement_freigeben`, v, true);
-            this.lastWritten.set(`${this.moduleFolder(mod)}.Heizelement_freigeben`, { val: v, ts: Date.now() });
+            void this.setState(`${this.moduleFolder(mod)}.heaterEnable`, v, true);
+            this.lastWritten.set(`${this.moduleFolder(mod)}.heaterEnable`, { val: v, ts: Date.now() });
         }
     }
 
     private restoreSetpoint(mod: number): void {
         const v = this.reportedSetpoint.get(mod);
         if (v !== undefined) {
-            void this.setState(`${this.moduleFolder(mod)}.Sollwert`, v, true);
-            this.lastWritten.set(`${this.moduleFolder(mod)}.Sollwert`, { val: v, ts: Date.now() });
+            void this.setState(`${this.moduleFolder(mod)}.setpoint`, v, true);
+            this.lastWritten.set(`${this.moduleFolder(mod)}.setpoint`, { val: v, ts: Date.now() });
         }
     }
 
     /* ------------------------------------------------------------- Parameter lesen */
 
     private paramFolder(mod: number): string {
-        return `${this.moduleFolder(mod)}.Parameter`;
+        return `${this.moduleFolder(mod)}.parameters`;
     }
 
     /** Module, die beim Parameter-Lesen abgefragt werden: Lüftungsgerät zuerst, ohne Master (1) */
@@ -1259,21 +1343,25 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private async setupParameters(): Promise<void> {
-        // Bedienung und Status direkt unter der Instanz
-        await this.ensureObject('Parameter_lesen', {
+        // controls and status in the channel paramRead directly under the instance
+        await this.ensureChannel('paramRead', tr('Read parameters of all modules', 'Parameter aller Module lesen'));
+        await this.ensureObject('paramRead.start', {
             type: 'state',
             common: {
-                name: 'Parameter aller Module einmalig lesen (nur Lese-Anfragen, dauert über eine Stunde)',
+                name: tr(
+                    'Read the parameters of all modules once (read queries only, takes more than an hour)',
+                    'Parameter aller Module einmalig lesen (nur Lese-Anfragen, dauert über eine Stunde)',
+                ),
                 type: 'boolean',
                 role: 'button',
                 read: false,
                 write: true,
             },
         });
-        await this.ensureObject('Parameter_lesen_aktiv', {
+        await this.ensureObject('paramRead.running', {
             type: 'state',
             common: {
-                name: 'Parameter-Lesen läuft',
+                name: tr('Reading parameters is running', 'Parameter-Lesen läuft'),
                 type: 'boolean',
                 role: 'indicator.working',
                 read: true,
@@ -1281,10 +1369,10 @@ class ProxonHesp extends utils.Adapter {
                 def: false,
             },
         });
-        await this.ensureObject('Parameter_lesen_Fortschritt', {
+        await this.ensureObject('paramRead.progress', {
             type: 'state',
             common: {
-                name: 'Fortschritt des Parameter-Lesens',
+                name: tr('Progress of reading parameters', 'Fortschritt des Parameter-Lesens'),
                 type: 'number',
                 role: 'value',
                 unit: '%',
@@ -1295,10 +1383,10 @@ class ProxonHesp extends utils.Adapter {
                 def: 0,
             },
         });
-        await this.ensureObject('Parameter_lesen_Status', {
+        await this.ensureObject('paramRead.status', {
             type: 'state',
             common: {
-                name: 'Status des Parameter-Lesens',
+                name: tr('Status of reading parameters', 'Status des Parameter-Lesens'),
                 type: 'string',
                 role: 'text',
                 read: true,
@@ -1306,22 +1394,24 @@ class ProxonHesp extends utils.Adapter {
                 def: '',
             },
         });
-        await this.ensureObject('Parameter_lesen_zuletzt', {
+        await this.ensureObject('paramRead.lastRun', {
             type: 'state',
             common: {
-                name: 'Zeitpunkt des letzten vollständigen Parameter-Lesens',
+                name: tr(
+                    'Time of the last complete parameter read',
+                    'Zeitpunkt des letzten vollständigen Parameter-Lesens',
+                ),
                 type: 'number',
                 role: 'date',
                 read: true,
                 write: false,
             },
         });
-        this.subscribeStates('Parameter_lesen');
-        await this.setStateAsync('Parameter_lesen_aktiv', false, true);
-        await this.cleanupOldObjects();
+        this.subscribeStates('paramRead.start');
+        await this.setStateAsync('paramRead.running', false, true);
 
         for (const mod of this.paramModules()) {
-            const dir = await this.getStateAsync(`${this.paramFolder(mod)}.Verzeichnis`);
+            const dir = await this.getStateAsync(`${this.paramFolder(mod)}.directory`);
             if (dir && typeof dir.val === 'string' && dir.val) {
                 try {
                     this.paramDirs.set(mod, JSON.parse(dir.val) as ParamDirectory);
@@ -1331,47 +1421,41 @@ class ProxonHesp extends utils.Adapter {
             }
         }
         if (this.cfg.pollEnabled) {
-            this.cfg.pollMinutes = Math.max(5, Number(this.cfg.pollMinutes) || 60);
-            this.log.info(`Regelmäßige Parameter-Abfrage alle ${this.cfg.pollMinutes} min aktiv`);
-            this.setInterval(() => void this.pollParameters(), this.cfg.pollMinutes * 60 * 1000);
+            this.log.info(`Periodic parameter polling every ${this.cfg.pollMinutes} min enabled`);
+            this.setInterval(
+                () => void this.pollParameters(),
+                Math.min(this.cfg.pollMinutes * 60 * 1000, MAX_TIMER_MS),
+            );
         }
     }
 
-    /** Reste älterer Versionen entfernen: seitenweise Meta-States und den alten Knopf */
-    private async cleanupOldObjects(): Promise<void> {
-        const lists = Object.values(META)
-            .filter(d => !d.text)
-            .map(d => d.name)
-            .join('|');
+    /**
+     * Reste älterer Versionen (vor 0.4.0) entfernen: seitenweise Meta-States und den alten Knopf
+     *
+     * @param objs
+     */
+    private async cleanupOldObjects(objs: Record<string, ioBroker.Object>): Promise<void> {
+        const lists = 'DPListe|Typcodes|Zugriff|Einheiten';
         const re = new RegExp(`\\.Meta\\.(?:(?:${lists})_\\d+(?:_raw)?|(?:${lists})_raw)$`);
-        const old = new Set([
-            `${this.paramFolder(UNIT_ADDR)}.Lesen`,
-            `${this.paramFolder(UNIT_ADDR)}.Status`,
-            `${this.paramFolder(UNIT_ADDR)}.Zuletzt`,
-        ]);
-        const objs = await this.getAdapterObjectsAsync();
+        const old = /^[^.]+\.Parameter\.(?:Lesen|Status|Zuletzt)$/;
         let n = 0;
         for (const full of Object.keys(objs)) {
             const rel = full.substring(this.namespace.length + 1);
-            if (re.test(rel) || old.has(rel)) {
+            if (re.test(rel) || old.test(rel)) {
                 await this.delObjectAsync(rel);
-                this.known.delete(rel);
+                delete objs[full];
                 n++;
             }
         }
         if (n) {
-            this.log.info(`${n} veraltete Objekte (seitenweise Meta-Daten, alter Parameter-Knopf) entfernt`);
+            this.log.info(`${n} obsolete objects (paged meta data, old parameter button) removed`);
         }
     }
 
     private async setParamStatus(text: string, percent?: number): Promise<void> {
-        await this.setStateAsync('Parameter_lesen_Status', text, true);
+        await this.setStateAsync('paramRead.status', text, true);
         if (percent !== undefined) {
-            await this.setStateAsync(
-                'Parameter_lesen_Fortschritt',
-                Math.max(0, Math.min(100, Math.round(percent))),
-                true,
-            );
+            await this.setStateAsync('paramRead.progress', Math.max(0, Math.min(100, Math.round(percent))), true);
         }
     }
 
@@ -1414,7 +1498,7 @@ class ProxonHesp extends utils.Adapter {
         let ok = 0;
         let fail = -1;
         for (let o = META_PAGE; o < 4096; o += META_PAGE) {
-            await status(`Verzeichnis, prüfe Offset ${o}`);
+            await status(`directory, checking offset ${o}`);
             const p = await this.query(mod, 0x0033, o, 1);
             if (!p) {
                 fail = o;
@@ -1433,7 +1517,7 @@ class ProxonHesp extends utils.Adapter {
         let hi = fail;
         while (hi - lo > 1) {
             const mid = Math.floor((lo + hi) / 2);
-            await status(`Verzeichnis, prüfe Offset ${mid}`);
+            await status(`directory, checking offset ${mid}`);
             // Offset außerhalb der Liste beantwortet das Gerät mit Typ 4 (Ablehnung) -> sofort bekannt
             if (await this.query(mod, 0x0033, mid, 1)) {
                 lo = mid;
@@ -1456,7 +1540,7 @@ class ProxonHesp extends utils.Adapter {
         if (!offsets) {
             return null;
         }
-        await status('Verzeichnis (DP-Liste, Typ, Zugriff, Einheit)');
+        await status('directory (DP list, type, access, unit)');
         const dps = await this.readMetaList(mod, 0x0033, offsets);
         if (!dps) {
             return null;
@@ -1487,62 +1571,65 @@ class ProxonHesp extends utils.Adapter {
     /** Knopf „Parameter_lesen“: je Modul Name, Verzeichnis und alle Parameter einmal abfragen */
     private async readParameters(): Promise<void> {
         if (this.paramRunning) {
-            this.log.info('Parameter-Lesen läuft bereits');
+            this.log.info('Reading parameters is already running');
             return;
         }
         if (!this.busConnected) {
-            await this.setParamStatus('Fehler: keine Verbindung zum Gateway');
+            await this.setParamStatus('error: no connection to the gateway');
             return;
         }
         this.paramRunning = true;
-        await this.setStateAsync('Parameter_lesen_aktiv', true, true);
+        await this.setStateAsync('paramRead.running', true, true);
         const mods = this.paramModules();
         const summary: string[] = [];
         try {
-            this.addEvent('Parameter-Lesen gestartet');
+            this.addEvent('Reading parameters started');
             for (let mi = 0; mi < mods.length && !this.stopping; mi++) {
                 const mod = mods[mi];
                 const label = `${this.moduleFolder(mod)} (${mi + 1}/${mods.length})`;
                 const status = (t: string, frac = 0): Promise<void> =>
                     this.setParamStatus(`${label}: ${t}`, ((mi + frac) / mods.length) * 100);
-                await status('Name');
+                await status('name');
                 await this.readName(mod);
                 const dir = await this.readDirectory(mod, t => status(t));
                 if (!dir) {
-                    summary.push(`${this.moduleFolder(mod)}: kein Verzeichnis`);
+                    summary.push(`${this.moduleFolder(mod)}: no directory`);
                     continue;
                 }
                 this.paramDirs.set(mod, dir);
                 await this.ensureModule(mod);
-                await this.ensureChannel(this.paramFolder(mod), 'Parameter (per Lese-Anfrage)');
-                await this.ensureObject(`${this.paramFolder(mod)}.Verzeichnis`, {
+                await this.ensureParamChannel(mod);
+                await this.ensureObject(`${this.paramFolder(mod)}.directory`, {
                     type: 'state',
                     common: {
-                        name: 'Verzeichnis (DP, Zugriff, Einheit) aus den Meta-DPs',
+                        name: tr(
+                            'Directory (DP, access, unit) from the meta DPs',
+                            'Verzeichnis (DP, Zugriff, Einheit) aus den Meta-DPs',
+                        ),
                         type: 'string',
                         role: 'json',
                         read: true,
                         write: false,
                     },
                 });
-                await this.write(`${this.paramFolder(mod)}.Verzeichnis`, JSON.stringify(dir), true);
+                await this.write(`${this.paramFolder(mod)}.directory`, JSON.stringify(dir), true);
                 const ok = await this.readParamList(mod, dir.dps, (i, n, dp) =>
-                    status(`Parameter ${i}/${n} (0x${dp.toString(16).padStart(4, '0')})`, i / n),
+                    status(`parameter ${i}/${n} (0x${dp.toString(16).padStart(4, '0')})`, i / n),
                 );
                 summary.push(`${this.moduleFolder(mod)}: ${ok}/${dir.dps.length}`);
             }
             if (this.stopping) {
-                await this.setParamStatus(`abgebrochen (Adapter beendet) – ${summary.join(', ')}`);
+                await this.setParamStatus(`aborted (adapter stopped) – ${summary.join(', ')}`);
                 return;
             }
-            await this.setStateAsync('Parameter_lesen_zuletzt', Date.now(), true);
-            const text = `fertig – ${summary.join(', ')}`;
+            await this.setStateAsync('paramRead.lastRun', Date.now(), true);
+            const text = `finished – ${summary.join(', ')}`;
             await this.setParamStatus(text, 100);
-            this.addEvent(`Parameter-Lesen ${text}`);
+            this.addEvent(`Reading parameters ${text}`);
         } finally {
             this.paramRunning = false;
             if (!this.stopping) {
-                await this.setStateAsync('Parameter_lesen_aktiv', false, true);
+                await this.setStateAsync('paramRead.running', false, true);
             }
         }
     }
@@ -1555,7 +1642,7 @@ class ProxonHesp extends utils.Adapter {
         const list = parseDpList(this.cfg.pollList);
         const dps = list.length ? list : this.paramDirs.get(UNIT_ADDR)?.dps || [];
         if (!dps.length) {
-            this.log.debug('Parameter-Abfrage: noch kein Verzeichnis – bitte einmal „Parameter_lesen“ auslösen');
+            this.log.debug('Parameter polling: no directory yet – please trigger "paramRead.start" once');
             return;
         }
         this.paramRunning = true;
@@ -1601,11 +1688,12 @@ class ProxonHesp extends utils.Adapter {
         const unitCode = dir && idx >= 0 ? dir.units[idx] : undefined;
         const names = mod === UNIT_ADDR ? PARAM_NAMES : ROOM_PARAM_NAMES;
         const val = decodeParam(payload);
+        await this.ensureParamChannel(mod);
         await this.ensureObject(id, {
             type: 'state',
             common: {
-                name: names[dp] ? `${names[dp]} (0x${hex})` : `DP 0x${hex}`,
-                desc: `Zugriff: ${acc === undefined ? '?' : PARAM_ACCESS[acc] || `0x${acc.toString(16)}`}, Einheitencode ${unitCode ?? '?'}, Rohdaten ${toHex(payload)}`,
+                name: names[dp] ? tr(`${names[dp].en} (0x${hex})`, `${names[dp].de} (0x${hex})`) : `DP 0x${hex}`,
+                desc: `Access: ${acc === undefined ? '?' : PARAM_ACCESS[acc] || `0x${acc.toString(16)}`}, unit code ${unitCode ?? '?'}, raw data ${toHex(payload)}`,
                 type: typeof val === 'number' ? 'number' : 'string',
                 role: typeof val === 'number' ? 'value' : 'json',
                 unit: unitCode !== undefined ? PARAM_UNITS[unitCode] : undefined,
@@ -1629,10 +1717,10 @@ class ProxonHesp extends utils.Adapter {
             const hex = f.payload.toString('hex');
             if (this.learnLast.get(key) !== hex) {
                 this.learnLast.set(key, hex);
-                this.learnWrite('aenderungen', `${Date.now()} ${key} ${hex}`);
+                this.learnWrite('changes', `${Date.now()} ${key} ${hex}`);
             }
         } else if (f.type > FrameType.Reject) {
-            this.learnWrite('unbekannt', `${Date.now()} typ${f.type} ${f.raw.toString('hex')}`);
+            this.learnWrite('unknown', `${Date.now()} type${f.type} ${f.raw.toString('hex')}`);
         }
     }
 
@@ -1642,18 +1730,18 @@ class ProxonHesp extends utils.Adapter {
         if (!f || f.day !== day) {
             f?.stream.end();
             try {
-                const dir = path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen');
+                const dir = this.learnDir();
                 fs.mkdirSync(dir, { recursive: true });
                 const stream = fs.createWriteStream(path.join(dir, `${kind}_${day}.log`), { flags: 'a' });
-                stream.on('error', e => this.log.warn(`Lernprotokoll: ${e.message}`));
+                stream.on('error', e => this.log.warn(`Learning log: ${e.message}`));
                 f = { day, stream };
                 this.learnFiles.set(kind, f);
-                if (kind === 'aenderungen') {
+                if (kind === 'changes') {
                     // jede Tagesdatei beginnt mit dem vollständigen Stand
                     this.learnLast.clear();
                 }
             } catch (e) {
-                this.log.warn(`Lernprotokoll nicht möglich: ${(e as Error).message}`);
+                this.log.warn(`Learning log not possible: ${(e as Error).message}`);
                 return;
             }
         }
@@ -1665,7 +1753,7 @@ class ProxonHesp extends utils.Adapter {
         if (!this.cfg.learnLogDays) {
             return;
         }
-        const dir = path.join(utils.getAbsoluteInstanceDataDir(this), 'lernen');
+        const dir = this.learnDir();
         const limit = new Date(Date.now() - this.cfg.learnLogDays * 86400e3).toLocaleDateString('sv-SE');
         try {
             for (const name of fs.readdirSync(dir)) {
@@ -1689,13 +1777,13 @@ class ProxonHesp extends utils.Adapter {
             fs.mkdirSync(dir, { recursive: true });
             const file = path.join(dir, `capture_${new Date().toISOString().replace(/[:.]/g, '-')}.txt`);
             const stream = fs.createWriteStream(file, { flags: 'a' });
-            stream.write('# Proxon-HESP-Mitschnitt: ISO-Zeit Typ Quelle>Ziel Register-ID Telegramm(hex)\n');
+            stream.write('# Proxon HESP capture: ISO time, type, source>destination, register ID, telegram (hex)\n');
             const timer = this.setTimeout(() => this.stopCapture(true), this.cfg.captureMinutes * 60000);
             this.capture = { stream, file, timer };
-            this.log.info(`Mitschnitt gestartet: ${file} (${this.cfg.captureMinutes} min)`);
+            this.log.info(`Capture started: ${file} (${this.cfg.captureMinutes} min)`);
             void this.setState('info.capture', true, true);
         } catch (e) {
-            this.log.warn(`Mitschnitt nicht möglich: ${(e as Error).message}`);
+            this.log.warn(`Capture not possible: ${(e as Error).message}`);
             void this.setState('info.capture', false, true);
         }
     }
@@ -1706,11 +1794,181 @@ class ProxonHesp extends utils.Adapter {
                 this.clearTimeout(this.capture.timer);
             }
             this.capture.stream.end();
-            this.log.info(`Mitschnitt beendet: ${this.capture.file}`);
+            this.log.info(`Capture finished: ${this.capture.file}`);
             this.capture = null;
         }
         if (updateState) {
             void this.setState('info.capture', false, true);
+        }
+    }
+
+    /* ------------------------------------------------------------- Migration */
+
+    private learnDir(): string {
+        return path.join(utils.getAbsoluteInstanceDataDir(this), 'learn');
+    }
+
+    /**
+     * Up to 0.5.x the object IDs, the default module/mapping names and the learning log files were German.
+     * Renames them once: configuration (only the former default names), objects (with state value and custom
+     * settings such as history) and the learning log. Old and new IDs are written to migration-0.6.0.json in the
+     * instance data directory. Returns true if the configuration was changed (the adapter is restarted).
+     */
+    private async migrateToEnglishIds(): Promise<boolean> {
+        const cfgModules = this.cfg.modules || [];
+        const cfgMappings = this.cfg.mappings || [];
+        const modules = cfgModules.map(m => (m && isSet(m.name) ? { ...m, name: renameModule(String(m.name)) } : m));
+        const mappings = cfgMappings.map(m => {
+            if (!m || !m.name) {
+                return m;
+            }
+            const n = { ...m, name: renamePath(String(m.name)) };
+            const u = MAPPING_UPDATES[n.name];
+            if (u?.states && m.states === u.states[0]) {
+                n.states = u.states[1];
+            }
+            if (u?.unit && m.unit === u.unit[0]) {
+                n.unit = u.unit[1];
+            }
+            return n;
+        });
+        const cfgChanged =
+            JSON.stringify(modules) !== JSON.stringify(cfgModules) ||
+            JSON.stringify(mappings) !== JSON.stringify(cfgMappings);
+
+        // module folders old -> new
+        const folders = new Map<string, string>();
+        cfgModules.forEach((m, i) => {
+            if (m && m.address !== undefined) {
+                const before = this.cleanId(String(m.name ?? '')) || `Modul_${m.address}`;
+                folders.set(before, this.cleanId(String(modules[i].name ?? '')) || fallbackFolder(Number(m.address)));
+            }
+        });
+
+        const objs = await this.getAdapterObjectsAsync();
+        await this.cleanupOldObjects(objs);
+        const moves: [string, string][] = [];
+        for (const full of Object.keys(objs)) {
+            const rel = full.substring(this.namespace.length + 1);
+            const to = migrateId(rel, folders);
+            if (to !== rel) {
+                moves.push([rel, to]);
+            }
+        }
+        this.migrateLearnLog();
+
+        if (moves.length) {
+            this.log.info(`Migrating ${moves.length} objects to the English IDs of version 0.6.0 …`);
+            const depth = (id: string): number => id.split('.').length;
+            moves.sort((a, b) => depth(a[0]) - depth(b[0]));
+            const map: Record<string, string> = {};
+            for (const [from, to] of moves) {
+                const oldFull = `${this.namespace}.${from}`;
+                const newFull = `${this.namespace}.${to}`;
+                map[oldFull] = newFull;
+                const obj = objs[oldFull];
+                const existing = objs[newFull] || (await this.getForeignObjectAsync(newFull));
+                if (!existing) {
+                    const { _id, ...rest } = obj as ioBroker.Object & { _id?: string };
+                    void _id;
+                    await this.setForeignObjectAsync(newFull, rest);
+                } else if (obj.common?.custom && !existing.common?.custom) {
+                    await this.extendForeignObjectAsync(newFull, { common: { custom: obj.common.custom } });
+                }
+                if (obj.type === 'state') {
+                    const st = await this.getForeignStateAsync(oldFull);
+                    const target = existing ? await this.getForeignStateAsync(newFull) : null;
+                    if (st && !target) {
+                        await this.setForeignStateAsync(newFull, {
+                            val: st.val,
+                            ack: st.ack,
+                            ts: st.ts,
+                            lc: st.lc,
+                            q: st.q,
+                        });
+                    }
+                }
+            }
+            for (const [from] of [...moves].reverse()) {
+                const oldFull = `${this.namespace}.${from}`;
+                try {
+                    await this.delForeignObjectAsync(oldFull);
+                    if (objs[oldFull]?.type === 'state') {
+                        await this.delForeignStateAsync(oldFull);
+                    }
+                } catch (e) {
+                    this.log.warn(`Could not delete ${oldFull}: ${(e as Error).message}`);
+                }
+            }
+            try {
+                const dir = utils.getAbsoluteInstanceDataDir(this);
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(path.join(dir, 'migration-0.6.0.json'), JSON.stringify(map, null, 2));
+            } catch (e) {
+                this.log.warn(`Could not write the migration list: ${(e as Error).message}`);
+            }
+            this.log.info(
+                `${moves.length} objects migrated (list in migration-0.6.0.json). Recorded history stays under the old IDs.`,
+            );
+        }
+        if (cfgChanged) {
+            this.log.info('Module and mapping names in the configuration migrated to English – restarting');
+            await this.updateConfig({ modules, mappings });
+            return true;
+        }
+        return false;
+    }
+
+    /** learning log: folder "lernen" -> "learn", files aenderungen_* -> changes_*, unbekannt_* -> unknown_*/
+    private migrateLearnLog(): void {
+        const base = utils.getAbsoluteInstanceDataDir(this);
+        const oldDir = path.join(base, 'lernen');
+        const newDir = this.learnDir();
+        try {
+            if (!fs.existsSync(oldDir)) {
+                return;
+            }
+            fs.mkdirSync(newDir, { recursive: true });
+            for (const name of fs.readdirSync(oldDir)) {
+                const to = name.replace(/^aenderungen_/, 'changes_').replace(/^unbekannt_/, 'unknown_');
+                if (!fs.existsSync(path.join(newDir, to))) {
+                    fs.renameSync(path.join(oldDir, name), path.join(newDir, to));
+                }
+            }
+            if (!fs.readdirSync(oldDir).length) {
+                fs.rmdirSync(oldDir);
+            }
+        } catch (e) {
+            this.log.warn(`Could not migrate the learning log: ${(e as Error).message}`);
+        }
+    }
+
+    /** writable states of control options that are switched off are removed */
+    private async removeDisabledControls(): Promise<void> {
+        const control = new Set(
+            String(this.cfg.controlModules || '')
+                .split(',')
+                .map(x => Number(x.trim())),
+        );
+        for (const [mod, folder] of this.moduleNames) {
+            const keep = {
+                setpoint: !!this.cfg.allowWrite && control.has(mod),
+                heaterEnable: !!this.cfg.allowWrite && !!this.cfg.allowHeaterWrite && control.has(mod),
+            };
+            for (const [leaf, ok] of Object.entries(keep)) {
+                const id = `${folder}.${leaf}`;
+                if (!ok && this.known.has(id)) {
+                    await this.delObjectAsync(id);
+                    this.known.delete(id);
+                    this.log.info(`${id} removed (option disabled)`);
+                }
+            }
+        }
+        const clock = this.clockButtonId();
+        if (!(this.cfg.allowWrite && this.cfg.allowClockWrite) && this.known.has(clock)) {
+            await this.delObjectAsync(clock);
+            this.known.delete(clock);
+            this.log.info(`${clock} removed (option disabled)`);
         }
     }
 
@@ -1738,25 +1996,34 @@ class ProxonHesp extends utils.Adapter {
         const folder = this.moduleFolder(mod);
         await this.ensureObject(folder, {
             type: 'device',
-            common: { name: `${folder} (Busadresse ${mod})` },
+            common: { name: tr(`${folder} (bus address ${mod})`, `${folder} (Busadresse ${mod})`) },
         });
     }
 
-    private async ensureChannel(id: string, name: string): Promise<void> {
+    private async ensureChannel(id: string, name: ioBroker.StringOrTranslated): Promise<void> {
         await this.ensureObject(id, { type: 'channel', common: { name } });
+    }
+
+    private async ensureParamChannel(mod: number): Promise<void> {
+        await this.ensureChannel(
+            this.paramFolder(mod),
+            tr('Parameters (read queries)', 'Parameter (per Lese-Anfrage)'),
+        );
     }
 
     /**
      * Zwischenebenen von Zuordnungsnamen mit Punkten als Kanal anlegen
      *
-     * @param id
-     * @param from
+     * @param id object ID
+     * @param from first level to create (2 = below the module folder)
+     * @param prefix prefix of the name lookup in NAMES ("/" for names from the instance root)
      */
-    private async ensureParents(id: string, from = 2): Promise<void> {
+    private async ensureParents(id: string, from = 2, prefix = ''): Promise<void> {
         const parts = id.split('.');
         for (let i = from; i < parts.length; i++) {
             const pid = parts.slice(0, i).join('.');
-            await this.ensureChannel(pid, parts[i - 1]);
+            const key = prefix + parts.slice(from - 1, i).join('.');
+            await this.ensureChannel(pid, NAMES[key] || parts[i - 1]);
         }
     }
 
@@ -1765,6 +2032,24 @@ class ProxonHesp extends utils.Adapter {
         obj: Omit<ioBroker.SettableObject, '_id' | 'native'> & { native?: Record<string, unknown> },
     ): Promise<void> {
         if (this.known.has(id)) {
+            // existing object: update name, unit and value texts once if they changed (e.g. after the ID migration)
+            const old = this.knownCommon.get(id);
+            if (old) {
+                this.knownCommon.delete(id);
+                const c = obj.common as Partial<ioBroker.StateCommon>;
+                const upd: Partial<ioBroker.StateCommon> = {};
+                for (const k of ['name', 'unit', 'states'] as const) {
+                    if (c[k] !== undefined && JSON.stringify(c[k]) !== JSON.stringify(old[k])) {
+                        (upd as Record<string, unknown>)[k] = c[k];
+                    }
+                }
+                if (Object.keys(upd).length) {
+                    if (upd.name && c.desc !== undefined) {
+                        upd.desc = c.desc;
+                    }
+                    await this.extendObjectAsync(id, { common: upd });
+                }
+            }
             return;
         }
         const pending = this.pendingCreate.get(id);
@@ -1803,7 +2088,7 @@ class ProxonHesp extends utils.Adapter {
         try {
             await this.setStateAsync(id, val, true);
         } catch (e) {
-            this.log.warn(`setState ${id} fehlgeschlagen: ${(e as Error).message}`);
+            this.log.warn(`setState ${id} failed: ${(e as Error).message}`);
         }
     }
 }
