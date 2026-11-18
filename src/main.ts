@@ -60,6 +60,22 @@ const cfgNum = (v: unknown, def: number, min: number, max: number): number => {
     const n = isSet(v) ? Number(v) : NaN;
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 };
+/** German parameter descriptions of versions before 0.6.0 -> English */
+const OLD_ACCESS: Record<string, string> = {
+    'nur lesen': 'read only',
+    'Benutzer schreibbar': 'writable (user)',
+    'Fachmann schreibbar': 'writable (installer)',
+    'Fachmann sichtbar': 'visible (installer)',
+};
+const translateParamDesc = (d: string): string => {
+    const m = /^Zugriff: (.*), Einheitencode (.*), Rohdaten (.*)$/.exec(d);
+    if (!m) {
+        return d;
+    }
+    const acc = OLD_ACCESS[m[1]] ?? m[1].replace(/^Fachmann/, 'installer').replace(/^intern/, 'internal');
+    return `Access: ${acc}, unit code ${m[2]}, raw data ${m[3]}`;
+};
+
 /** Largest delay setTimeout/setInterval accept (ms) */
 const MAX_TIMER_MS = 2147483647;
 
@@ -307,12 +323,24 @@ class ProxonHesp extends utils.Adapter {
             const rel = id.substring(this.namespace.length + 1);
             this.known.add(rel);
             const c = o.common as Partial<ioBroker.StateCommon>;
-            this.knownCommon.set(rel, { name: c.name, unit: c.unit, states: c.states });
+            this.knownCommon.set(rel, { name: c.name, unit: c.unit, states: c.states, desc: c.desc });
         }
         await this.removeDisabledControls();
         await this.restoreMeta();
+        await this.refreshNames();
         await this.restoreEvents();
 
+        await this.ensureObject('info.connection', {
+            type: 'state',
+            common: {
+                name: tr('Connected and receiving valid telegrams', 'Verbunden und gültige Telegramme'),
+                type: 'boolean',
+                role: 'indicator.connected',
+                read: true,
+                write: false,
+                def: false,
+            },
+        });
         await this.ensureObject('info.capture', {
             type: 'state',
             common: {
@@ -717,12 +745,7 @@ class ProxonHesp extends utils.Adapter {
         const regName = `${kind}_${f.dp}${f.sub ? `_${f.sub}` : ''}`;
         const base = `${folder}.registers.${regName}`;
         const isNew = !this.known.has(base);
-        const hex = `0x${f.dp.toString(16).padStart(4, '0')}`;
-        const sub = f.sub ? ` sub ${f.sub}` : '';
-        const desc = tr(
-            `Module ${mod} ${kind === 'R' ? 'reports' : 'receives'} DP ${f.dp} (${hex})${sub}`,
-            `Modul ${mod} ${kind === 'R' ? 'liest' : 'erhält'} DP ${f.dp} (${hex})${sub}`,
-        );
+        const desc = this.registerDesc(mod, kind, f.dp, f.sub);
 
         if (isNew) {
             await this.ensureChannel(
@@ -1799,6 +1822,121 @@ class ProxonHesp extends utils.Adapter {
         }
         if (updateState) {
             void this.setState('info.capture', false, true);
+        }
+    }
+
+    private registerDesc(mod: number, kind: string, dp: number, subSel: number): Translated {
+        const hex = `0x${dp.toString(16).padStart(4, '0')}`;
+        const sub = subSel ? ` sub ${subSel}` : '';
+        return tr(
+            `Module ${mod} ${kind === 'R' ? 'reports' : 'receives'} DP ${dp} (${hex})${sub}`,
+            `Modul ${mod} ${kind === 'R' ? 'liest' : 'erhält'} DP ${dp} (${hex})${sub}`,
+        );
+    }
+
+    /**
+     * Names of existing objects that are only created once (register channels and statistics, meta data,
+     * parameters) are brought up to date at start, e.g. after the migration from German names.
+     * Meta directories are rebuilt from the stored lists.
+     */
+    private async refreshNames(): Promise<void> {
+        const addr = new Map([...this.moduleNames].map(([a, f]) => [f, a]));
+        const metaByName = new Map(Object.values(META).map(d => [d.name, d]));
+        const want = (rel: string): Partial<ioBroker.StateCommon> | null => {
+            const p = rel.split('.');
+            const mod = addr.get(p[0]) ?? Number(/^module(\d+)$/.exec(p[0])?.[1]);
+            if (!Number.isFinite(mod)) {
+                return null;
+            }
+            if (p[1] === 'registers') {
+                if (p.length === 2) {
+                    return { name: tr('All registers seen on the bus', 'Alle mitgelesenen Register') };
+                }
+                const m = /^([RW])_(\d+)(?:_(\d+))?$/.exec(p[2]);
+                if (!m) {
+                    return null;
+                }
+                const d = this.registerDesc(mod, m[1], Number(m[2]), Number(m[3] || 0));
+                const leaf: Record<string, Translated> = {
+                    value: tr(`${d.en} – value (auto-decoded)`, `${d.de} – Wert (automatisch gedeutet)`),
+                    raw: tr(`${d.en} – raw data (hex)`, `${d.de} – Rohdaten (hex)`),
+                    lastSeen: tr(`${d.en} – last seen`, `${d.de} – zuletzt gesehen`),
+                    count: tr(
+                        `${d.en} – telegrams since adapter start`,
+                        `${d.de} – Anzahl Telegramme seit Adapterstart`,
+                    ),
+                };
+                return p.length === 3 ? { name: d } : p.length === 4 && leaf[p[3]] ? { name: leaf[p[3]] } : null;
+            }
+            if (p[1] === 'meta') {
+                if (p.length === 2) {
+                    return {
+                        name: tr(
+                            'Self-description of the module (meta DPs)',
+                            'Selbstauskunft des Moduls (Meta-Datenpunkte)',
+                        ),
+                    };
+                }
+                if (p[2] === 'directory') {
+                    return { name: tr('DP directory (from the meta DPs)', 'DP-Verzeichnis (aus Meta-Datenpunkten)') };
+                }
+                const raw = p[2].endsWith('Raw');
+                const def = metaByName.get(raw ? p[2].slice(0, -3) : p[2]);
+                if (!def) {
+                    return null;
+                }
+                if (raw) {
+                    return { name: tr(`${def.title.en} – raw data (hex)`, `${def.title.de} – Rohdaten (hex)`) };
+                }
+                return { name: def.text ? def.title : tr(`${def.title.en} (list)`, `${def.title.de} (Liste)`) };
+            }
+            if (p[1] === 'parameters') {
+                if (p.length === 2) {
+                    return { name: tr('Parameters (read queries)', 'Parameter (per Lese-Anfrage)') };
+                }
+                if (p[2] === 'directory') {
+                    return {
+                        name: tr(
+                            'Directory (DP, access, unit) from the meta DPs',
+                            'Verzeichnis (DP, Zugriff, Einheit) aus den Meta-DPs',
+                        ),
+                    };
+                }
+                const m = /^DP_([0-9A-F]{4})$/.exec(p[2]);
+                if (!m) {
+                    return null;
+                }
+                const names = mod === UNIT_ADDR ? PARAM_NAMES : ROOM_PARAM_NAMES;
+                const n = names[parseInt(m[1], 16)];
+                return { name: n ? tr(`${n.en} (0x${m[1]})`, `${n.de} (0x${m[1]})`) : `DP 0x${m[1]}` };
+            }
+            return null;
+        };
+        let n = 0;
+        for (const [rel, old] of this.knownCommon) {
+            const c = want(rel);
+            if (!c) {
+                continue;
+            }
+            const upd: Partial<ioBroker.StateCommon> = {};
+            if (JSON.stringify(c.name) !== JSON.stringify(old.name)) {
+                upd.name = c.name;
+            }
+            const desc = typeof old.desc === 'string' ? translateParamDesc(old.desc) : undefined;
+            if (desc && desc !== old.desc) {
+                upd.desc = desc;
+            }
+            if (Object.keys(upd).length) {
+                await this.extendObjectAsync(rel, { common: upd });
+                this.knownCommon.set(rel, { ...old, ...upd });
+                n++;
+            }
+        }
+        if (n) {
+            this.log.info(`Names of ${n} objects updated`);
+        }
+        for (const mod of Object.keys(this.meta)) {
+            await this.buildDirectory(Number(mod));
         }
     }
 
