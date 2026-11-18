@@ -133,7 +133,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### 0.6.0 (in Vorbereitung)
+### 0.6.0 (2026-11-18)
 
 - (Bruch) Englische Objekt-IDs; bestehende Installationen werden beim ersten Start automatisch umgestellt (siehe „Umstieg von 0.5.x“)
 - Namen der Datenpunkte auf Englisch und Deutsch; Log-Meldungen, Ereignis- und Wertetexte auf Englisch
