@@ -77,6 +77,7 @@ englisch (z. B. `unit.temperatures.t1SupplyAir`). Beim ersten Start stellt der A
 - Modul- und Zuordnungsnamen in der Instanzkonfiguration, soweit sie noch die früheren Standardnamen tragen
   (eigene Namen, z. B. Raumnamen, bleiben erhalten),
 - alle Objekte samt aktuellem Wert und Einstellungen (z. B. History-Aufzeichnung),
+- Zuordnungen in Aufzählungen (Räume, Funktionen) und Alias-Ziele,
 - den Ordner des Lernprotokolls (`lernen` → `learn`).
 
 Die Liste alter und neuer IDs steht danach in `iobroker-data/proxon-hesp.N/migration-0.6.0.json`.

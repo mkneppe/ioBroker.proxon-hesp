@@ -68,6 +68,7 @@ English IDs (e.g. `unit.temperatures.t1SupplyAir`). On the first start the adapt
 - module and mapping names in the instance configuration, as far as they still have the former default names
   (own names, e.g. room names, are kept),
 - all objects including their current value and their settings (e.g. history logging),
+- enum memberships (rooms, functions) and alias targets,
 - the learning log folder (`lernen` → `learn`).
 
 The list of old and new IDs is written to `iobroker-data/proxon-hesp.N/migration-0.6.0.json`.

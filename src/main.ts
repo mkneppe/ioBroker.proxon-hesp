@@ -2027,6 +2027,8 @@ class ProxonHesp extends utils.Adapter {
                     }
                 }
             }
+            // before deleting: deleting an object also removes it from all enums
+            await this.migrateReferences(map);
             for (const [from] of [...moves].reverse()) {
                 const oldFull = `${this.namespace}.${from}`;
                 try {
@@ -2041,7 +2043,11 @@ class ProxonHesp extends utils.Adapter {
             try {
                 const dir = utils.getAbsoluteInstanceDataDir(this);
                 fs.mkdirSync(dir, { recursive: true });
-                fs.writeFileSync(path.join(dir, 'migration-0.6.0.json'), JSON.stringify(map, null, 2));
+                const file = path.join(dir, 'migration-0.6.0.json');
+                const before = fs.existsSync(file)
+                    ? (JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, string>)
+                    : {};
+                fs.writeFileSync(file, JSON.stringify({ ...before, ...map }, null, 2));
             } catch (e) {
                 this.log.warn(`Could not write the migration list: ${(e as Error).message}`);
             }
@@ -2055,6 +2061,50 @@ class ProxonHesp extends utils.Adapter {
             return true;
         }
         return false;
+    }
+
+    /**
+     * enum memberships (rooms, functions) and alias targets that point to migrated IDs are switched to the new IDs
+     *
+     * @param map old ID -> new ID (full IDs)
+     */
+    private async migrateReferences(map: Record<string, string>): Promise<void> {
+        let n = 0;
+        const remap = (t: unknown): unknown => (typeof t === 'string' && map[t] ? map[t] : t);
+        try {
+            const enums = await this.getForeignObjectsAsync('enum.*', 'enum');
+            for (const [id, e] of Object.entries(enums || {})) {
+                const members = e.common?.members;
+                if (Array.isArray(members) && members.some(m => map[m])) {
+                    await this.extendForeignObjectAsync(id, {
+                        common: { members: members.map(m => map[m] || m) },
+                    });
+                    n++;
+                }
+            }
+            const aliases = await this.getForeignObjectsAsync('alias.*', 'state');
+            for (const [id, a] of Object.entries(aliases || {})) {
+                const target = (a.common as ioBroker.StateCommon & { alias?: { id?: unknown } })?.alias?.id;
+                let next: unknown = target;
+                if (typeof target === 'string') {
+                    next = remap(target);
+                } else if (target && typeof target === 'object') {
+                    const t = target as { read?: unknown; write?: unknown };
+                    next = { ...t, read: remap(t.read), write: remap(t.write) };
+                }
+                if (JSON.stringify(next) !== JSON.stringify(target)) {
+                    await this.extendForeignObjectAsync(id, {
+                        common: { alias: { id: next } },
+                    });
+                    n++;
+                }
+            }
+        } catch (e) {
+            this.log.warn(`Could not update enums/aliases: ${(e as Error).message}`);
+        }
+        if (n) {
+            this.log.info(`${n} enums/aliases switched to the new IDs`);
+        }
     }
 
     /** learning log: folder "lernen" -> "learn", files aenderungen_* -> changes_*, unbekannt_* -> unknown_*/
@@ -2088,7 +2138,13 @@ class ProxonHesp extends utils.Adapter {
                 .split(',')
                 .map(x => Number(x.trim())),
         );
-        for (const [mod, folder] of this.moduleNames) {
+        const folders = new Map(this.moduleNames);
+        for (const mod of control) {
+            if (Number.isInteger(mod) && mod > 0 && !folders.has(mod)) {
+                folders.set(mod, fallbackFolder(mod));
+            }
+        }
+        for (const [mod, folder] of folders) {
             const keep = {
                 setpoint: !!this.cfg.allowWrite && control.has(mod),
                 heaterEnable: !!this.cfg.allowWrite && !!this.cfg.allowHeaterWrite && control.has(mod),
