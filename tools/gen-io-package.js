@@ -10,6 +10,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
+// translated names (requires a build: npm run build)
+const { tr } = require('../build/src/lib/ids');
 // news, titleLang und desc (inkl. Übersetzungen) pflegen release-script und translate-adapter direkt in io-package.json
 const ioPath = path.join(__dirname, '..', 'io-package.json');
 const prev = fs.existsSync(ioPath) ? JSON.parse(fs.readFileSync(ioPath, 'utf8')).common || {} : {};
@@ -195,13 +197,13 @@ const io = {
     },
     objects: [],
     instanceObjects: [
-        { _id: 'info', type: 'channel', common: { name: { en: 'Information', de: 'Information' } }, native: {} },
+        { _id: 'info', type: 'channel', common: { name: tr('Information', 'Information') }, native: {} },
         {
             _id: 'info.connection',
             type: 'state',
             common: {
                 role: 'indicator.connected',
-                name: { en: 'Connected and receiving valid telegrams', de: 'Verbunden und gültige Telegramme' },
+                name: tr('Connected and receiving valid telegrams', 'Verbunden und gültige Telegramme'),
                 type: 'boolean',
                 read: true,
                 write: false,

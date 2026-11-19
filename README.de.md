@@ -133,6 +133,11 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
+### 0.6.1 (in Vorbereitung)
+
+- Namen der Datenpunkte und Kanäle in allen 11 ioBroker-Sprachen (bisher nur Englisch und Deutsch); bestehende Objekte werden beim ersten Start aktualisiert
+- Datenpunkte der Stundenstatistik werden beim Start angelegt
+
 ### 0.6.0 (2026-11-18)
 
 - (Bruch) Englische Objekt-IDs; bestehende Installationen werden beim ersten Start automatisch umgestellt (siehe „Umstieg von 0.5.x“)

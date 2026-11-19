@@ -330,6 +330,7 @@ class ProxonHesp extends utils.Adapter {
         await this.refreshNames();
         await this.restoreEvents();
 
+        await this.ensureChannel('info', tr('Information', 'Information'));
         await this.ensureObject('info.connection', {
             type: 'state',
             common: {
@@ -345,8 +346,9 @@ class ProxonHesp extends utils.Adapter {
             type: 'state',
             common: {
                 name: tr(
-                    `Capture telegrams to a file (${this.cfg.captureMinutes} min)`,
-                    `Telegramm-Mitschnitt in Datei (${this.cfg.captureMinutes} min)`,
+                    'Capture telegrams to a file ({0} min)',
+                    'Telegramm-Mitschnitt in Datei ({0} min)',
+                    this.cfg.captureMinutes,
                 ),
                 type: 'boolean',
                 role: 'switch',
@@ -356,6 +358,7 @@ class ProxonHesp extends utils.Adapter {
             },
         });
         await this.setState('info.capture', false, true);
+        await this.ensureHourObjects();
         this.subscribeStates('info.capture');
 
         if (this.cfg.allowWrite) {
@@ -759,7 +762,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(`${base}.value`, {
             type: 'state',
             common: {
-                name: tr(`${desc.en} – value (auto-decoded)`, `${desc.de} – Wert (automatisch gedeutet)`),
+                name: tr('{0} – value (auto-decoded)', '{0} – Wert (automatisch gedeutet)', desc),
                 type: d.kind === 'number' ? 'number' : 'string',
                 role: d.kind === 'number' ? 'value' : d.kind === 'list' ? 'json' : 'text',
                 unit,
@@ -770,7 +773,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(`${base}.raw`, {
             type: 'state',
             common: {
-                name: tr(`${desc.en} – raw data (hex)`, `${desc.de} – Rohdaten (hex)`),
+                name: tr('{0} – raw data (hex)', '{0} – Rohdaten (hex)', desc),
                 type: 'string',
                 role: 'text',
                 read: true,
@@ -813,7 +816,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(`${base}.lastSeen`, {
             type: 'state',
             common: {
-                name: tr(`${desc.en} – last seen`, `${desc.de} – zuletzt gesehen`),
+                name: tr('{0} – last seen', '{0} – zuletzt gesehen', desc),
                 type: 'number',
                 role: 'date',
                 read: true,
@@ -823,10 +826,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(`${base}.count`, {
             type: 'state',
             common: {
-                name: tr(
-                    `${desc.en} – telegrams since adapter start`,
-                    `${desc.de} – Anzahl Telegramme seit Adapterstart`,
-                ),
+                name: tr('{0} – telegrams since adapter start', '{0} – Anzahl Telegramme seit Adapterstart', desc),
                 type: 'number',
                 role: 'value',
                 read: true,
@@ -842,8 +842,8 @@ class ProxonHesp extends utils.Adapter {
         }
     }
 
-    private hourly(): void {
-        void this.ensureObject('info.framesPerHour', {
+    private async ensureHourObjects(): Promise<void> {
+        await this.ensureObject('info.framesPerHour', {
             type: 'state',
             common: {
                 name: tr('Valid telegrams (last hour)', 'Gültige Telegramme (letzte Stunde)'),
@@ -852,8 +852,8 @@ class ProxonHesp extends utils.Adapter {
                 read: true,
                 write: false,
             },
-        }).then(() => this.write('info.framesPerHour', this.hourOk, true));
-        void this.ensureObject('info.skippedBytesPerHour', {
+        });
+        await this.ensureObject('info.skippedBytesPerHour', {
             type: 'state',
             common: {
                 name: tr('Discarded bytes / CRC errors (last hour)', 'Verworfene Bytes / CRC-Fehler (letzte Stunde)'),
@@ -862,7 +862,12 @@ class ProxonHesp extends utils.Adapter {
                 read: true,
                 write: false,
             },
-        }).then(() => this.write('info.skippedBytesPerHour', this.hourBad, true));
+        });
+    }
+
+    private hourly(): void {
+        void this.write('info.framesPerHour', this.hourOk, true);
+        void this.write('info.skippedBytesPerHour', this.hourBad, true);
         this.hourOk = 0;
         this.hourBad = 0;
     }
@@ -891,7 +896,7 @@ class ProxonHesp extends utils.Adapter {
             await this.ensureObject(`${id}Raw`, {
                 type: 'state',
                 common: {
-                    name: tr(`${def.title.en} – raw data (hex)`, `${def.title.de} – Rohdaten (hex)`),
+                    name: tr('{0} – raw data (hex)', '{0} – Rohdaten (hex)', def.title),
                     type: 'string',
                     role: 'text',
                     read: true,
@@ -921,7 +926,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(id, {
             type: 'state',
             common: {
-                name: tr(`${def.title.en} (list)`, `${def.title.de} (Liste)`),
+                name: tr('{0} (list)', '{0} (Liste)', def.title),
                 type: 'string',
                 role: 'json',
                 read: true,
@@ -1715,7 +1720,7 @@ class ProxonHesp extends utils.Adapter {
         await this.ensureObject(id, {
             type: 'state',
             common: {
-                name: names[dp] ? tr(`${names[dp].en} (0x${hex})`, `${names[dp].de} (0x${hex})`) : `DP 0x${hex}`,
+                name: names[dp] ? tr('{0} (0x{1})', '{0} (0x{1})', names[dp], hex) : `DP 0x${hex}`,
                 desc: `Access: ${acc === undefined ? '?' : PARAM_ACCESS[acc] || `0x${acc.toString(16)}`}, unit code ${unitCode ?? '?'}, raw data ${toHex(payload)}`,
                 type: typeof val === 'number' ? 'number' : 'string',
                 role: typeof val === 'number' ? 'value' : 'json',
@@ -1828,10 +1833,9 @@ class ProxonHesp extends utils.Adapter {
     private registerDesc(mod: number, kind: string, dp: number, subSel: number): Translated {
         const hex = `0x${dp.toString(16).padStart(4, '0')}`;
         const sub = subSel ? ` sub ${subSel}` : '';
-        return tr(
-            `Module ${mod} ${kind === 'R' ? 'reports' : 'receives'} DP ${dp} (${hex})${sub}`,
-            `Modul ${mod} ${kind === 'R' ? 'liest' : 'erhält'} DP ${dp} (${hex})${sub}`,
-        );
+        return kind === 'R'
+            ? tr('Module {0} reports DP {1} ({2}){3}', 'Modul {0} liest DP {1} ({2}){3}', mod, dp, hex, sub)
+            : tr('Module {0} receives DP {1} ({2}){3}', 'Modul {0} erhält DP {1} ({2}){3}', mod, dp, hex, sub);
     }
 
     /**
@@ -1858,13 +1862,10 @@ class ProxonHesp extends utils.Adapter {
                 }
                 const d = this.registerDesc(mod, m[1], Number(m[2]), Number(m[3] || 0));
                 const leaf: Record<string, Translated> = {
-                    value: tr(`${d.en} – value (auto-decoded)`, `${d.de} – Wert (automatisch gedeutet)`),
-                    raw: tr(`${d.en} – raw data (hex)`, `${d.de} – Rohdaten (hex)`),
-                    lastSeen: tr(`${d.en} – last seen`, `${d.de} – zuletzt gesehen`),
-                    count: tr(
-                        `${d.en} – telegrams since adapter start`,
-                        `${d.de} – Anzahl Telegramme seit Adapterstart`,
-                    ),
+                    value: tr('{0} – value (auto-decoded)', '{0} – Wert (automatisch gedeutet)', d),
+                    raw: tr('{0} – raw data (hex)', '{0} – Rohdaten (hex)', d),
+                    lastSeen: tr('{0} – last seen', '{0} – zuletzt gesehen', d),
+                    count: tr('{0} – telegrams since adapter start', '{0} – Anzahl Telegramme seit Adapterstart', d),
                 };
                 return p.length === 3 ? { name: d } : p.length === 4 && leaf[p[3]] ? { name: leaf[p[3]] } : null;
             }
@@ -1886,9 +1887,9 @@ class ProxonHesp extends utils.Adapter {
                     return null;
                 }
                 if (raw) {
-                    return { name: tr(`${def.title.en} – raw data (hex)`, `${def.title.de} – Rohdaten (hex)`) };
+                    return { name: tr('{0} – raw data (hex)', '{0} – Rohdaten (hex)', def.title) };
                 }
-                return { name: def.text ? def.title : tr(`${def.title.en} (list)`, `${def.title.de} (Liste)`) };
+                return { name: def.text ? def.title : tr('{0} (list)', '{0} (Liste)', def.title) };
             }
             if (p[1] === 'parameters') {
                 if (p.length === 2) {
@@ -1908,7 +1909,7 @@ class ProxonHesp extends utils.Adapter {
                 }
                 const names = mod === UNIT_ADDR ? PARAM_NAMES : ROOM_PARAM_NAMES;
                 const n = names[parseInt(m[1], 16)];
-                return { name: n ? tr(`${n.en} (0x${m[1]})`, `${n.de} (0x${m[1]})`) : `DP 0x${m[1]}` };
+                return { name: n ? tr('{0} (0x{1})', '{0} (0x{1})', n, m[1]) : `DP 0x${m[1]}` };
             }
             return null;
         };
@@ -2190,7 +2191,7 @@ class ProxonHesp extends utils.Adapter {
         const folder = this.moduleFolder(mod);
         await this.ensureObject(folder, {
             type: 'device',
-            common: { name: tr(`${folder} (bus address ${mod})`, `${folder} (Busadresse ${mod})`) },
+            common: { name: tr('{0} (bus address {1})', '{0} (Busadresse {1})', folder, mod) },
         });
     }
 

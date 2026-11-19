@@ -6,21 +6,31 @@
  * (instance configuration and objects) and the translated names of the default states.
  */
 
-/** Name in English and German */
-export interface Translated {
-    /** English */
-    en: string;
-    /** German */
-    de: string;
-}
+import { I18N, OTHER_LANGS } from './i18n';
+
+/** Name in all languages supported by ioBroker */
+export type Translated = Record<'en' | 'de' | (typeof OTHER_LANGS)[number], string>;
 
 /**
- * Translated name helper
+ * Translated name: English and German are given here, the other languages come from the table in i18n.ts
+ * (keyed by the English text; English is used if an entry is missing). Placeholders {0}, {1}, … are replaced
+ * by the arguments, translated names are inserted in the matching language.
  *
- * @param en
- * @param de
+ * @param en English text
+ * @param de German text
+ * @param args values for the placeholders
  */
-export const tr = (en: string, de: string): Translated => ({ en, de });
+export function tr(en: string, de: string, ...args: (string | number | Translated)[]): Translated {
+    const row = I18N[en];
+    const fill = (tpl: string, lang: keyof Translated): string =>
+        tpl.replace(/\{(\d+)\}/g, (m, i: string) => {
+            const a = args[Number(i)];
+            return a === undefined ? m : typeof a === 'object' ? a[lang] : String(a);
+        });
+    const out = { en: fill(en, 'en'), de: fill(de, 'de') } as Translated;
+    OTHER_LANGS.forEach((lang, i) => (out[lang] = fill(row ? row[i] : en, lang)));
+    return out;
+}
 
 /** Default module names (instance configuration) that are renamed */
 export const MODULE_RENAMES: Record<string, string> = {

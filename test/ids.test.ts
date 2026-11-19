@@ -2,7 +2,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { migrateId, NAMES, PATH_RENAMES, renameModule, renamePath } from '../src/lib/ids';
+import { migrateId, NAMES, PATH_RENAMES, renameModule, renamePath, tr } from '../src/lib/ids';
+import { I18N, OTHER_LANGS } from '../src/lib/i18n';
 
 const folders = new Map([
     ['Zentrale', 'unit'],
@@ -84,4 +85,46 @@ test('default mappings: names are English and translated', () => {
     for (const m of io.native.modules) {
         assert.match(m.name, /^[a-z][A-Za-z0-9]*$/);
     }
+});
+
+test('names: every tr() text has translations with the same placeholders', () => {
+    const src = ['main.ts', 'lib/ids.ts', 'lib/params.ts'].map(f =>
+        fs.readFileSync(path.join(__dirname, '..', '..', 'src', f), 'utf8'),
+    );
+    const lit = /\btr\(\s*'((?:[^'\\]|\\.)*)'/g;
+    const keys = new Set<string>();
+    for (const s of src) {
+        for (const m of s.matchAll(lit)) {
+            keys.add(m[1].replace(/\\'/g, "'"));
+        }
+    }
+    assert.ok(keys.size > 100, `only ${keys.size} texts found`);
+    const ph = (s: string): string =>
+        [...s.matchAll(/\{\d+\}/g)]
+            .map(m => m[0])
+            .sort()
+            .join();
+    for (const en of keys) {
+        const row = I18N[en];
+        assert.ok(row, `missing translation: ${en}`);
+        assert.equal(row.length, OTHER_LANGS.length, en);
+        for (const t of row) {
+            assert.ok(t.trim(), `empty translation: ${en}`);
+            assert.equal(ph(t), ph(en), `placeholders differ: ${en} -> ${t}`);
+        }
+    }
+    for (const en of Object.keys(I18N)) {
+        assert.ok(keys.has(en) || en === 'Information', `unused translation: ${en}`);
+    }
+});
+
+test('names: tr() fills all languages and nested names', () => {
+    const inner = tr('T1 supply air', 'T1 Zuluft');
+    const n = tr('{0} – last seen', '{0} – zuletzt gesehen', inner);
+    assert.deepEqual(Object.keys(n).sort(), ['de', 'en', ...OTHER_LANGS].sort());
+    assert.equal(n.en, 'T1 supply air – last seen');
+    assert.equal(n.de, 'T1 Zuluft – zuletzt gesehen');
+    assert.equal(n.fr, 'T1 air soufflé – vu pour la dernière fois');
+    const m = tr('{0} (bus address {1})', '{0} (Busadresse {1})', 'room10', 10);
+    assert.equal(m['zh-cn'], 'room10（总线地址 10）');
 });

@@ -1694,7 +1694,16 @@
       "common": {
         "name": {
           "en": "Information",
-          "de": "Information"
+          "de": "Information",
+          "ru": "Информация",
+          "pt": "Informação",
+          "nl": "Informatie",
+          "fr": "Information",
+          "it": "Informazioni",
+          "es": "Información",
+          "pl": "Informacje",
+          "uk": "Інформація",
+          "zh-cn": "信息"
         }
       },
       "native": {}
@@ -1706,7 +1715,16 @@
         "role": "indicator.connected",
         "name": {
           "en": "Connected and receiving valid telegrams",
-          "de": "Verbunden und gültige Telegramme"
+          "de": "Verbunden und gültige Telegramme",
+          "ru": "Подключено и получает корректные телеграммы",
+          "pt": "Ligado e a receber telegramas válidos",
+          "nl": "Verbonden en ontvangt geldige telegrammen",
+          "fr": "Connecté et reçoit des télégrammes valides",
+          "it": "Connesso e riceve telegrammi validi",
+          "es": "Conectado y recibiendo telegramas válidos",
+          "pl": "Połączono i odbierane są poprawne telegramy",
+          "uk": "Підключено та отримує коректні телеграми",
+          "zh-cn": "已连接并接收有效报文"
         },
         "type": "boolean",
         "read": true,
