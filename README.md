@@ -109,7 +109,7 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 0.6.1 (2026-11-19)
 
 - State and channel names in all 11 ioBroker languages (previously English and German only); existing objects are updated on the first start
 - Hourly statistics states are created at start

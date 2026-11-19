@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "proxon-hesp",
-    "version": "0.6.0",
+    "version": "0.6.1",
     "news": {
+      "0.6.1": {
+        "en": "State and channel names in all 11 ioBroker languages (previously English and German only); existing objects are updated on the first start\nHourly statistics states are created at start",
+        "de": "Namen der Datenpunkte und Kanäle in allen 11 ioBroker-Sprachen (bisher nur Englisch und Deutsch); bestehende Objekte werden beim ersten Start aktualisiert\nDatenpunkte der Stundenstatistik werden beim Start angelegt",
+        "ru": "Названия точек данных и каналов на всех 11 языках ioBroker (ранее только на английском и немецком); существующие объекты обновляются при первом запуске\nТочки данных почасовой статистики создаются при запуске",
+        "pt": "Nomes de pontos de dados e canais nos 11 idiomas do ioBroker (antes só inglês e alemão); os objetos existentes são atualizados no primeiro arranque\nOs pontos de dados da estatística horária são criados no arranque",
+        "nl": "Namen van datapunten en kanalen in alle 11 ioBroker-talen (voorheen alleen Engels en Duits); bestaande objecten worden bij de eerste start bijgewerkt\nDatapunten van de uurstatistiek worden bij de start aangemaakt",
+        "fr": "Noms des points de données et des canaux dans les 11 langues d'ioBroker (auparavant anglais et allemand uniquement) ; les objets existants sont mis à jour au premier démarrage\nLes points de données des statistiques horaires sont créés au démarrage",
+        "it": "Nomi dei datapoint e dei canali in tutte le 11 lingue di ioBroker (prima solo inglese e tedesco); gli oggetti esistenti vengono aggiornati al primo avvio\nI datapoint delle statistiche orarie vengono creati all'avvio",
+        "es": "Nombres de puntos de datos y canales en los 11 idiomas de ioBroker (antes solo inglés y alemán); los objetos existentes se actualizan en el primer inicio\nLos puntos de datos de la estadística horaria se crean al iniciar",
+        "pl": "Nazwy punktów danych i kanałów we wszystkich 11 językach ioBroker (wcześniej tylko angielski i niemiecki); istniejące obiekty są aktualizowane przy pierwszym uruchomieniu\nPunkty danych statystyki godzinowej są tworzone przy uruchomieniu",
+        "uk": "Назви точок даних і каналів усіма 11 мовами ioBroker (раніше лише англійською та німецькою); наявні об’єкти оновлюються під час першого запуску\nТочки даних погодинної статистики створюються під час запуску",
+        "zh-cn": "数据点和通道名称支持全部 11 种 ioBroker 语言（此前仅英语和德语）；现有对象在首次启动时更新\n每小时统计数据点在启动时创建"
+      },
       "0.6.0": {
         "en": "English object IDs; existing installations are migrated automatically on the first start (see \"Upgrading from 0.5.x\")\nState names in English and German; log messages, event texts and value texts in English\nLearning log files renamed (`learn/changes_*`, `learn/unknown_*`)\nTimer settings are limited to valid ranges in the code\nWritable states of disabled options are removed; missing parent channels are created\nREADME: installation only via the ioBroker repository; NOTICE.md in English",
         "de": "Englische Objekt-IDs; bestehende Installationen werden beim ersten Start automatisch umgestellt (siehe „Umstieg von 0.5.x“)\nNamen der Datenpunkte auf Englisch und Deutsch; Log-Meldungen, Ereignis- und Wertetexte auf Englisch\nLernprotokoll-Dateien umbenannt (`learn/changes_*`, `learn/unknown_*`)\nZeiteinstellungen werden im Code auf gültige Bereiche begrenzt\nSchreibbare Datenpunkte abgeschalteter Optionen werden entfernt; fehlende Elternkanäle werden angelegt\nREADME: Installation nur noch über das ioBroker-Repository; NOTICE.md auf Englisch",
