@@ -133,6 +133,13 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
+### **WORK IN PROGRESS**
+
+- Objekte mit eigenen Einstellungen (z. B. History-Aufzeichnung) werden beim Abschalten einer Option nicht mehr gelöscht, sondern schreibgeschützt behalten; im Log erscheint eine Warnung
+- Bereits verwendete (ohne Beachtung der Groß-/Kleinschreibung) oder reservierte Modulnamen (`info`, `paramRead`) werden mit einer Warnung durch `module<Adresse>` ersetzt
+- Name des Modulordners der Busadresse 1 übersetzt (war aus älteren Versionen noch deutsch)
+- Fehler von Hintergrundaufgaben werden protokolliert, statt den Adapter neu zu starten
+
 ### 0.6.1 (2026-11-19)
 
 - Namen der Datenpunkte und Kanäle in allen 11 ioBroker-Sprachen (bisher nur Englisch und Deutsch); bestehende Objekte werden beim ersten Start aktualisiert

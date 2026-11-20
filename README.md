@@ -109,6 +109,13 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
+### **WORK IN PROGRESS**
+
+- Objects with custom settings (e.g. history logging) are no longer deleted when an option is disabled; they are kept read-only and a warning is logged
+- Module names that are already used (case-insensitive) or reserved (`info`, `paramRead`) fall back to `module<address>` with a warning
+- Name of the module folder of bus address 1 is translated (was still German from older versions)
+- Errors of background tasks are logged instead of restarting the adapter
+
 ### 0.6.1 (2026-11-19)
 
 - State and channel names in all 11 ioBroker languages (previously English and German only); existing objects are updated on the first start

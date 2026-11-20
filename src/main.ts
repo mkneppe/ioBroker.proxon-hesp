@@ -294,9 +294,21 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
 
+        // folder names must be unique (case-insensitive) and must not hide the instance's own folders
+        const usedFolders = new Set(['info', 'paramread']);
         for (const m of this.cfg.modules || []) {
             if (m && m.name !== undefined && m.address !== undefined) {
-                this.moduleNames.set(Number(m.address), this.cleanId(String(m.name)) || fallbackFolder(m.address));
+                const addr = Number(m.address);
+                let folder = this.cleanId(String(m.name)) || fallbackFolder(addr);
+                if (usedFolders.has(folder.toLowerCase())) {
+                    const alt = fallbackFolder(addr);
+                    this.log.warn(
+                        `Module name "${m.name}" (bus address ${addr}) is already used or reserved – using "${alt}" instead`,
+                    );
+                    folder = alt;
+                }
+                usedFolders.add(folder.toLowerCase());
+                this.moduleNames.set(addr, folder);
             }
         }
         for (const m of this.cfg.mappings || []) {
@@ -323,7 +335,7 @@ class ProxonHesp extends utils.Adapter {
             const rel = id.substring(this.namespace.length + 1);
             this.known.add(rel);
             const c = o.common as Partial<ioBroker.StateCommon>;
-            this.knownCommon.set(rel, { name: c.name, unit: c.unit, states: c.states, desc: c.desc });
+            this.knownCommon.set(rel, { name: c.name, unit: c.unit, states: c.states, desc: c.desc, write: c.write });
         }
         await this.removeDisabledControls();
         await this.restoreMeta();
@@ -468,7 +480,7 @@ class ProxonHesp extends utils.Adapter {
             }
             this.learnFiles.clear();
             this.shutdownSocket();
-            void this.setState('info.connection', false, true);
+            this.bg(this.setState('info.connection', false, true));
         } finally {
             callback();
         }
@@ -539,7 +551,7 @@ class ProxonHesp extends utils.Adapter {
     private setConnected(on: boolean): void {
         if (this.busConnected !== on) {
             this.busConnected = on;
-            void this.setState('info.connection', on, true);
+            this.bg(this.setState('info.connection', on, true));
         }
     }
 
@@ -595,24 +607,24 @@ class ProxonHesp extends utils.Adapter {
                     }
                 }
                 if (f.dp === 0x0194 && f.payload.length >= 2 && this.heaterMods.has(f.src)) {
-                    void this.onHeaterReport(f.src, (f.payload.readUInt16LE(0) & 0x0008) !== 0);
+                    this.bg(this.onHeaterReport(f.src, (f.payload.readUInt16LE(0) & 0x0008) !== 0));
                 }
                 if (f.dp === 0x01f6 && f.payload.length === 4 && this.controlMods.has(f.src)) {
-                    void this.onSetpointReport(f.src, Math.round(f.payload.readFloatLE(0) * 10) / 10);
+                    this.bg(this.onSetpointReport(f.src, Math.round(f.payload.readFloatLE(0) * 10) / 10));
                 }
                 const key = `${f.dst}>${f.src}`;
                 const q = this.queries.get(key);
                 this.queries.delete(key);
                 const count = q && q.id === f.id ? q.count : 0;
                 if (META[f.dp]) {
-                    void this.handleMeta(f.src, f);
+                    this.bg(this.handleMeta(f.src, f));
                 } else {
-                    void this.handleValue('R', f.src, f, count);
+                    this.bg(this.handleValue('R', f.src, f, count));
                 }
                 return;
             }
             case FrameType.Set:
-                void this.handleValue('W', f.dst, f, 0);
+                this.bg(this.handleValue('W', f.dst, f, 0));
                 return;
             case FrameType.Reject: {
                 // Ablehnung unserer Anfrage: nicht wiederholen
@@ -837,8 +849,8 @@ class ProxonHesp extends utils.Adapter {
 
     private flushStats(): void {
         for (const st of this.regStats.values()) {
-            void this.write(`${st.base}.lastSeen`, st.last, true);
-            void this.write(`${st.base}.count`, st.count, true);
+            this.bg(this.write(`${st.base}.lastSeen`, st.last, true));
+            this.bg(this.write(`${st.base}.count`, st.count, true));
         }
     }
 
@@ -866,8 +878,8 @@ class ProxonHesp extends utils.Adapter {
     }
 
     private hourly(): void {
-        void this.write('info.framesPerHour', this.hourOk, true);
-        void this.write('info.skippedBytesPerHour', this.hourBad, true);
+        this.bg(this.write('info.framesPerHour', this.hourOk, true));
+        this.bg(this.write('info.skippedBytesPerHour', this.hourBad, true));
         this.hourOk = 0;
         this.hourBad = 0;
     }
@@ -1045,8 +1057,8 @@ class ProxonHesp extends utils.Adapter {
         this.log.info(`Event: ${text}`);
         this.events.unshift({ ts: new Date().toISOString(), text });
         this.events = this.events.slice(0, this.cfg.eventLimit);
-        void this.setState('info.events', JSON.stringify(this.events), true);
-        void this.setState('info.lastEvent', text, true);
+        this.bg(this.setState('info.events', JSON.stringify(this.events), true));
+        this.bg(this.setState('info.lastEvent', text, true));
     }
 
     /* ------------------------------------------------------------- Mitschnitt */
@@ -1074,7 +1086,7 @@ class ProxonHesp extends utils.Adapter {
             return;
         }
         if (id === `${this.namespace}.paramRead.start` && state.val) {
-            void this.readParameters();
+            this.bg(this.readParameters());
         }
     }
 
@@ -1136,11 +1148,13 @@ class ProxonHesp extends utils.Adapter {
 
     private onMessage(obj: ioBroker.Message): void {
         if (obj?.command === 'listSerial') {
-            void listSerialPorts().then(list => {
-                if (obj.callback) {
-                    this.sendTo(obj.from, obj.command, list, obj.callback);
-                }
-            });
+            this.bg(
+                listSerialPorts().then(list => {
+                    if (obj.callback) {
+                        this.sendTo(obj.from, obj.command, list, obj.callback);
+                    }
+                }),
+            );
             return;
         }
         if (obj?.command !== 'setClock') {
@@ -1345,7 +1359,7 @@ class ProxonHesp extends utils.Adapter {
     private restoreHeater(mod: number): void {
         const v = this.reportedHeater.get(mod);
         if (v !== undefined) {
-            void this.setState(`${this.moduleFolder(mod)}.heaterEnable`, v, true);
+            this.bg(this.setState(`${this.moduleFolder(mod)}.heaterEnable`, v, true));
             this.lastWritten.set(`${this.moduleFolder(mod)}.heaterEnable`, { val: v, ts: Date.now() });
         }
     }
@@ -1353,7 +1367,7 @@ class ProxonHesp extends utils.Adapter {
     private restoreSetpoint(mod: number): void {
         const v = this.reportedSetpoint.get(mod);
         if (v !== undefined) {
-            void this.setState(`${this.moduleFolder(mod)}.setpoint`, v, true);
+            this.bg(this.setState(`${this.moduleFolder(mod)}.setpoint`, v, true));
             this.lastWritten.set(`${this.moduleFolder(mod)}.setpoint`, { val: v, ts: Date.now() });
         }
     }
@@ -1451,7 +1465,7 @@ class ProxonHesp extends utils.Adapter {
         if (this.cfg.pollEnabled) {
             this.log.info(`Periodic parameter polling every ${this.cfg.pollMinutes} min enabled`);
             this.setInterval(
-                () => void this.pollParameters(),
+                () => this.bg(this.pollParameters()),
                 Math.min(this.cfg.pollMinutes * 60 * 1000, MAX_TIMER_MS),
             );
         }
@@ -1469,8 +1483,7 @@ class ProxonHesp extends utils.Adapter {
         let n = 0;
         for (const full of Object.keys(objs)) {
             const rel = full.substring(this.namespace.length + 1);
-            if (re.test(rel) || old.test(rel)) {
-                await this.delObjectAsync(rel);
+            if ((re.test(rel) || old.test(rel)) && (await this.removeObject(rel, 'obsolete'))) {
                 delete objs[full];
                 n++;
             }
@@ -1797,7 +1810,7 @@ class ProxonHesp extends utils.Adapter {
 
     private startCapture(): void {
         if (this.capture) {
-            void this.setState('info.capture', true, true);
+            this.bg(this.setState('info.capture', true, true));
             return;
         }
         try {
@@ -1809,10 +1822,10 @@ class ProxonHesp extends utils.Adapter {
             const timer = this.setTimeout(() => this.stopCapture(true), this.cfg.captureMinutes * 60000);
             this.capture = { stream, file, timer };
             this.log.info(`Capture started: ${file} (${this.cfg.captureMinutes} min)`);
-            void this.setState('info.capture', true, true);
+            this.bg(this.setState('info.capture', true, true));
         } catch (e) {
             this.log.warn(`Capture not possible: ${(e as Error).message}`);
-            void this.setState('info.capture', false, true);
+            this.bg(this.setState('info.capture', false, true));
         }
     }
 
@@ -1826,7 +1839,7 @@ class ProxonHesp extends utils.Adapter {
             this.capture = null;
         }
         if (updateState) {
-            void this.setState('info.capture', false, true);
+            this.bg(this.setState('info.capture', false, true));
         }
     }
 
@@ -1851,6 +1864,9 @@ class ProxonHesp extends utils.Adapter {
             const mod = addr.get(p[0]) ?? Number(/^module(\d+)$/.exec(p[0])?.[1]);
             if (!Number.isFinite(mod)) {
                 return null;
+            }
+            if (p.length === 1) {
+                return { name: tr('{0} (bus address {1})', '{0} (Busadresse {1})', p[0], mod) };
             }
             if (p[1] === 'registers') {
                 if (p.length === 2) {
@@ -2152,18 +2168,18 @@ class ProxonHesp extends utils.Adapter {
             };
             for (const [leaf, ok] of Object.entries(keep)) {
                 const id = `${folder}.${leaf}`;
-                if (!ok && this.known.has(id)) {
-                    await this.delObjectAsync(id);
+                if (!ok && this.known.has(id) && (await this.removeObject(id, 'option disabled'))) {
                     this.known.delete(id);
-                    this.log.info(`${id} removed (option disabled)`);
                 }
             }
         }
         const clock = this.clockButtonId();
-        if (!(this.cfg.allowWrite && this.cfg.allowClockWrite) && this.known.has(clock)) {
-            await this.delObjectAsync(clock);
+        if (
+            !(this.cfg.allowWrite && this.cfg.allowClockWrite) &&
+            this.known.has(clock) &&
+            (await this.removeObject(clock, 'option disabled'))
+        ) {
             this.known.delete(clock);
-            this.log.info(`${clock} removed (option disabled)`);
         }
     }
 
@@ -2185,6 +2201,54 @@ class ProxonHesp extends utils.Adapter {
             .map(p => this.cleanId(p))
             .filter(Boolean)
             .join('.');
+    }
+
+    /**
+     * Runs an async task without awaiting it; errors are logged instead of becoming unhandled rejections.
+     *
+     * @param task promise of the task
+     */
+    private bg(task: Promise<unknown>): void {
+        task.catch((e: unknown) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            this.stopping
+                ? this.log.debug(`Error during shutdown: ${msg}`)
+                : this.log.error(`Unexpected error: ${msg}`);
+        });
+    }
+
+    /**
+     * Deletes an own object unless it has custom settings (e.g. history logging); such objects are kept
+     * read-only and a warning is logged.
+     *
+     * @param id object ID relative to the instance
+     * @param reason reason for the log message
+     * @returns true if the object was deleted
+     */
+    private async removeObject(id: string, reason: string): Promise<boolean> {
+        const obj = await this.getObjectAsync(id);
+        const custom = (obj?.common as ioBroker.StateCommon | undefined)?.custom;
+        if (obj && custom && Object.keys(custom).length) {
+            if (obj.type === 'state' && (obj.common as ioBroker.StateCommon).write) {
+                await this.extendObjectAsync(id, { common: { write: false } });
+                const kc = this.knownCommon.get(id);
+                if (kc) {
+                    kc.write = false;
+                }
+            }
+            this.log.warn(
+                `${id} not removed (${reason}) because it has custom settings (e.g. history logging) – delete it manually if it is no longer needed`,
+            );
+            return false;
+        }
+        if (obj) {
+            await this.delObjectAsync(id);
+        }
+        // obsolete objects are summarised by the caller
+        reason === 'obsolete'
+            ? this.log.debug(`${id} removed (${reason})`)
+            : this.log.info(`${id} removed (${reason})`);
+        return true;
     }
 
     private async ensureModule(mod: number): Promise<void> {
@@ -2233,7 +2297,7 @@ class ProxonHesp extends utils.Adapter {
                 this.knownCommon.delete(id);
                 const c = obj.common as Partial<ioBroker.StateCommon>;
                 const upd: Partial<ioBroker.StateCommon> = {};
-                for (const k of ['name', 'unit', 'states'] as const) {
+                for (const k of ['name', 'unit', 'states', 'write'] as const) {
                     if (c[k] !== undefined && JSON.stringify(c[k]) !== JSON.stringify(old[k])) {
                         (upd as Record<string, unknown>)[k] = c[k];
                     }
