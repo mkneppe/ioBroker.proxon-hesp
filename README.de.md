@@ -133,7 +133,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 
 ## Changelog
 
-### **WORK IN PROGRESS**
+### 0.6.2 (2026-11-23)
 
 - Objekte mit eigenen Einstellungen (z. B. History-Aufzeichnung) werden beim Abschalten einer Option nicht mehr gelöscht, sondern schreibgeschützt behalten; im Log erscheint eine Warnung
 - Bereits verwendete (ohne Beachtung der Groß-/Kleinschreibung) oder reservierte Modulnamen (`info`, `paramRead`) werden mit einer Warnung durch `module<Adresse>` ersetzt

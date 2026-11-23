@@ -109,7 +109,7 @@ h0 h1 h2 | id (uint32 LE) | len (nibbles) | payload | CRC16 LE
 Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 
 ## Changelog
-### **WORK IN PROGRESS**
+### 0.6.2 (2026-11-23)
 
 - Objects with custom settings (e.g. history logging) are no longer deleted when an option is disabled; they are kept read-only and a warning is logged
 - Module names that are already used (case-insensitive) or reserved (`info`, `paramRead`) fall back to `module<address>` with a warning
