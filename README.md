@@ -115,6 +115,7 @@ Sources and acknowledgements: see [NOTICE.md](NOTICE.md).
 - Module names that are already used (case-insensitive) or reserved (`info`, `paramRead`) fall back to `module<address>` with a warning
 - Name of the module folder of bus address 1 is translated (was still German from older versions)
 - Errors of background tasks are logged instead of restarting the adapter
+- Names for the heat pump parameters 0x0115 (switch-on threshold) and 0x011C (continuous operation temperature)
 
 ### 0.6.1 (2026-11-19)
 

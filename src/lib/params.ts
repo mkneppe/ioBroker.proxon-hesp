@@ -48,6 +48,8 @@ export const PARAM_NAMES: Record<number, Translated> = {
     0x015f: tr('Bypass threshold (presumably)', 'Bypass-Schwelle (vermutlich)'),
     0x0160: tr('Bypass active', 'Bypass aktiv'),
     0x0110: tr('Cooling threshold', 'Kühlschwelle'),
+    0x0115: tr('Heat pump switch-on threshold', 'WP-Einschaltschwelle'),
+    0x011c: tr('Heat pump continuous operation temperature', 'WP-Dauerlauf-Temperatur'),
     0x0116: tr('Max. heating/cooling power', 'Max. Heiz-/Kühlleistung'),
     0x0120: tr('Heat pump power (presumably)', 'Wärmepumpen-Leistung (vermutlich)'),
     0x0124: tr('Defrost curve outdoor temperature (presumably)', 'Abtau-Kennlinie Außentemperatur (vermutlich)'),

@@ -139,6 +139,7 @@ Quellen und Danksagung: siehe [NOTICE.md](NOTICE.md).
 - Bereits verwendete (ohne Beachtung der Groß-/Kleinschreibung) oder reservierte Modulnamen (`info`, `paramRead`) werden mit einer Warnung durch `module<Adresse>` ersetzt
 - Name des Modulordners der Busadresse 1 übersetzt (war aus älteren Versionen noch deutsch)
 - Fehler von Hintergrundaufgaben werden protokolliert, statt den Adapter neu zu starten
+- Namen für die Wärmepumpen-Parameter 0x0115 (Einschaltschwelle) und 0x011C (Dauerlauf-Temperatur)
 
 ### 0.6.1 (2026-11-19)
 

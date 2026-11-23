@@ -15,7 +15,7 @@ Knowledge about the protocol and the data points comes from the following source
 - **David Nierhaus – proxon-hesp-homeassistant**, https://github.com/DNier/proxon-hesp-homeassistant
   (MIT license): mappings for, among others, the temperature block 0x03B7, fan control and
   fan curves, fan level status words 0x0208, operating hours, calendar/time
-  0x032E/0x0330, valve indicators 0x006C, length field overflow for 128-byte replies.
+  0x032E/0x0330, valve indicators 0x006C, heat pump thresholds 0x0115/0x011C, length field overflow for 128-byte replies.
   Its byte-wise checksum recursion is mathematically identical to the CRC-16 formulation
   used here (polynomial 0x8048 reflected, 16 shift steps per byte).
   Only the mappings (meaning of the data points) were taken over, no program code.
@@ -66,7 +66,7 @@ Protokoll- und Datenpunktwissen stammt aus folgenden Quellen:
 - **David Nierhaus – proxon-hesp-homeassistant**, https://github.com/DNier/proxon-hesp-homeassistant
   (MIT-Lizenz): Zuordnungen u. a. für Temperaturblock 0x03B7, Lüfteransteuerung und
   -kennlinien, Lüfterstufen-Statuswörter 0x0208, Betriebsstunden, Kalender/Uhrzeit
-  0x032E/0x0330, Ventilanzeigen 0x006C, Längenfeld-Überlauf bei 128-Byte-Antworten.
+  0x032E/0x0330, Ventilanzeigen 0x006C, WP-Schwellen 0x0115/0x011C, Längenfeld-Überlauf bei 128-Byte-Antworten.
   Dessen byteweise Prüfsummen-Rekursion ist mathematisch identisch mit der hier
   verwendeten CRC-16-Formulierung (Polynom 0x8048 reflektiert, 16 Schiebeschritte je Byte).
   Übernommen wurden die Zuordnungen (Bedeutung der Datenpunkte), kein Programmcode.
